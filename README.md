@@ -97,3 +97,42 @@ saturated colour the root art direction already sanctions (its "deep indigo bott
 the colour of Cherry Coast's chef otter). Player two's tray also carries a second, light
 inner ring, and every square has a VoiceOver label naming its owner, so the two sides
 stay apart in greyscale and for colour-blind players too.
+
+## Building and releasing
+
+Xcode 26.5, iOS 18 deployment target, iPhone only. `Engine/` is a local Swift package
+referenced by the app target — open `App/BananaChess.xcodeproj` and it resolves itself.
+
+```sh
+export DEVELOPER_DIR=/Applications/Xcode-26.5.0.app/Contents/Developer
+
+# Engine tests (120)
+cd Engine && swift test
+
+# UI tests
+xcodebuild -project App/BananaChess.xcodeproj -scheme BananaChess \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' test
+
+# Archive for distribution
+xcodebuild -project App/BananaChess.xcodeproj -scheme BananaChess \
+  -configuration Release -destination 'generic/platform=iOS' \
+  -archivePath "$HOME/Library/Developer/Xcode/Archives/$(date +%F)/BananaChess.xcarchive" archive
+```
+
+### Before the first TestFlight upload
+
+Two things are outstanding and neither can be done from the command line without
+touching the Apple Developer account:
+
+1. **An app icon.** `Assets.xcassets/AppIcon.appiconset` declares a 1024×1024 slot and
+   has no image in it, so the build carries no `CFBundleIconName` and App Store Connect
+   will reject the upload. Drop a 1024×1024 PNG in and it is fixed.
+2. **A distribution certificate and an App Store provisioning profile.** Only an Apple
+   Development identity is installed, so `xcodebuild -exportArchive` fails with "No
+   profiles for 'com.charlesbarton.bananachess' were found". Archive, then use Xcode's
+   Organizer → Distribute App, which creates both against the signed-in Apple ID.
+
+Also worth knowing: the app record for `com.charlesbarton.bananachess` has to exist in
+App Store Connect first, the App ID needs the **Game Center** capability enabled to match
+`App/BananaChess.entitlements`, and every TestFlight upload needs a unique
+`CURRENT_PROJECT_VERSION` — it is currently `1`, at marketing version `0.1`.
