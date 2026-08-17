@@ -1,0 +1,22 @@
+# macOS
+.DS_Store
+
+# Swift Package Manager
+Engine/.build/
+Engine/.swiftpm/
+.build/
+Package.resolved
+
+# Xcode
+DerivedData/
+build/
+*.xcarchive
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Xcode per-user state — schemes and breakpoints belong to whoever opened it,
+# not to the project. The shared scheme in xcshareddata is tracked instead.
+xcuserdata/
+*.xcuserstate
+*.moved-aside
