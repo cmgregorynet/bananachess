@@ -10,7 +10,6 @@ struct WildcardTrackerView: View {
     let seat: PlayerSeat
 
     private var smoothie: SmoothieProgress { state.wildcards.smoothie[player] }
-    private var opposingSeat: PlayerSeat { seat == .bottom ? .top : .bottom }
     private var bananas: Int { state.wildcards.bananasDelivered[player] }
     private var blenderama: Int { state.wildcards.ownFruitBlended[player] }
 
@@ -53,15 +52,6 @@ struct WildcardTrackerView: View {
                         .opacity(smoothie.has(kind) ? 1 : 0.22)
                         .grayscale(smoothie.has(kind) ? 0 : 1)
                 }
-                // The stolen ingredient, drawn in the *other* seat's colour, because
-                // colour is how ownership reads everywhere else on this board. Without
-                // it a player collects all three types and cannot see why nothing
-                // poured.
-                PieceArtwork(kind: .strawberry, seat: opposingSeat, showsTray: false)
-                    .frame(width: 15, height: 15)
-                    .opacity(smoothie.includesOpposingFruit ? 1 : 0.22)
-                    .grayscale(smoothie.includesOpposingFruit ? 0 : 1)
-                    .padding(.leading, 3)
             }
 
             track(
@@ -129,11 +119,7 @@ struct WildcardTrackerView: View {
     private var accessibilityDescription: String {
         var parts = [
             "Smoothie \(smoothie.collectedCount) of 3"
-                + (state.wildcards.smoothieFired[player]
-                    ? ", already poured"
-                    : smoothie.needsOpposingFruit
-                        ? ", still needs one of your opponent's fruit"
-                        : ""),
+                + (state.wildcards.smoothieFired[player] ? ", already poured" : ""),
             "Banana Split \(bananas) of \(GameSetup.bananaDeliveriesToWin)"
                 + (isSplitBlocked ? ", no longer possible" : ""),
         ]

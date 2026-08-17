@@ -356,7 +356,7 @@ final class MatchViewModel {
         case .blenderRestored, .bananaReturned, .blenderRespawned: return .milliseconds(380)
         // The two big wildcard moments get a beat to land before play carries on.
         case .pineappleTurnedGolden: return .milliseconds(620)
-        case .smoothie: return .milliseconds(620)
+        case .smoothie, .smoothiePoured: return .milliseconds(620)
         // Long enough for the pulp to read; the tail of the burst is allowed to overrun
         // into the next event rather than holding up the turn.
         case .blended: return .milliseconds(420)

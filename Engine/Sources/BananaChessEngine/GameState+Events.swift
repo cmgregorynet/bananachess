@@ -34,6 +34,10 @@ extension GameState {
             } else {
                 next.remove(pieceID)
             }
+        case .smoothiePoured:
+            // The points arrive in the `scoreChanged` that follows it; this event exists
+            // for the UI to celebrate, and moves nothing on the board.
+            break
         case .scoreChanged(let player, let newScore):
             next.scores[player] = newScore
         case .turnChanged(let active):

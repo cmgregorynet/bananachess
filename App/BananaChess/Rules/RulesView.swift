@@ -34,7 +34,7 @@ struct RulesView: View {
 
                         section("Blender combat") {
                             Text("Run your blender into another and it destroys that one outright and takes the square. Nobody scores for it, and you get nothing else out of it — no extra move. It works on your own blenders too.")
-                            Text("A blender standing on either of its owner's spawn squares cannot be taken by anything. Home is safe, so a blender you have just bought back cannot be knocked straight off again — though it is only safe while it stays there, and a Tropical Smoothie reaches it anyway.")
+                            Text("A blender standing on either of its owner's spawn squares cannot be taken by anything. Home is safe, so a blender you have just bought back cannot be knocked straight off again — though it is only safe while it stays there.")
                             Text("Blenders never come back on their own. Spend a whole turn and three points and a destroyed blender returns to its spawn — tap the dashed circle where it used to be. Your score may go below zero paying for it.")
                         }
 
@@ -85,7 +85,7 @@ struct RulesView: View {
             )
             wildcardRule(
                 "Tropical Smoothie",
-                "Blend at least one of every fruit type — with at least one of them taken off your opponent — and both of their blenders blow up on the spot. They play one turn without them, then get them back for nothing: unlike combat, a smoothie costs a turn, not the blenders. Three of your own fruit is not a recipe, so a smoothie always means going and taking something. Both players can see the progress."
+                "Blend at least one of every fruit type and collect three points. It does not matter whose fruit went in — your own count exactly the same as theirs. It pays once each per match, and both players can see the progress."
             )
             wildcardRule(
                 "Blenderama",

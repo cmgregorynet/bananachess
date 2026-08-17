@@ -24,8 +24,13 @@ public enum GameEvent: Hashable, Codable, Sendable {
 
     /// The surviving pineapple has been promoted after the first one was blended.
     case pineappleTurnedGolden(pieceID: PieceID, owner: PlayerID)
+    /// A player completed a Tropical Smoothie and collected the bonus.
+    case smoothiePoured(player: PlayerID, points: Int)
     /// A player completed a Tropical Smoothie; the opponent's blenders are blown off
     /// the board and return by themselves at the start of `respawnTurn`.
+    ///
+    /// **Retained, not emitted.** The smoothie pays points now instead. Kept whole
+    /// against the day the blowout comes back — see `RulesEngine.pourSmoothie`.
     case smoothie(player: PlayerID, pieceIDs: [PieceID], respawnTurn: Int)
 }
 

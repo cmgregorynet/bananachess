@@ -52,16 +52,22 @@ public enum RulesEngine {
     /// 10 — a Tropical Smoothie needs at least one of the opponent's fruit in it.
     /// 11 — Blenderama is a shutout: any scoring turn by the opponent takes it off.
     /// 12 — a blender standing on one of its owner's spawns cannot be taken.
-    public static let rulesVersion = 12
+    /// 13 — a Tropical Smoothie pays three points instead of blowing up blenders, and
+    ///      takes any fruit, whoever grew it.
+    public static let rulesVersion = 13
 
     /// Points it costs to put a destroyed blender back on its spawn, which also takes
     /// the whole turn. Scores may go negative paying it — there is no affordability
     /// check, deliberately.
     public static let blenderRestoreCost = 3
 
-    /// A Tropical Smoothie does not destroy blenders for good: their owner spends one
-    /// turn without them and they come back on their own at the start of the turn after
-    /// that. Combat kills are the permanent kind.
+    /// What completing a Tropical Smoothie pays its maker, once per match.
+    public static let smoothieAward = 3
+
+    /// How long the opponent went without blenders when a smoothie blew them up.
+    ///
+    /// **Retained, unused.** Smoothies pay points now. This and `pourSmoothie` are kept
+    /// intact and tested so the blowout can be switched back on — see `RULES_ADDENDUM.md`.
     public static let smoothieBlackoutTurns = 2
 
     // MARK: - Legal moves
@@ -373,11 +379,23 @@ public enum RulesEngine {
 
         promoteGoldenPineappleIfNeeded(after: fruit, in: &state, events: &events)
 
-        state.wildcards.smoothie[player].record(fruit.kind, opposing: fruit.owner != player)
+        state.wildcards.smoothie[player].record(fruit.kind)
         guard state.wildcards.smoothie[player].isComplete,
               !state.wildcards.smoothieFired[player] else { return }
         state.wildcards.smoothieFired[player] = true
-        pourSmoothie(for: player, in: &state, events: &events)
+        awardSmoothie(to: player, in: &state, events: &events)
+    }
+
+    /// One of every fruit type through your blenders, whoever grew them, pays
+    /// `smoothieAward` points. Once each per match.
+    private static func awardSmoothie(
+        to player: PlayerID,
+        in state: inout GameState,
+        events: inout [GameEvent]
+    ) {
+        state.scores[player] += smoothieAward
+        events.append(.smoothiePoured(player: player, points: smoothieAward))
+        events.append(.scoreChanged(player: player, newScore: state.scores[player]))
     }
 
     /// Losing one of your two pineapples promotes the other.
@@ -409,7 +427,12 @@ public enum RulesEngine {
     /// own fruit is not a recipe, it is just twelve points of self-harm. Unlike a combat kill these come back by themselves: their
     /// owner plays exactly one turn without blenders, and they return at the start of the
     /// turn after that. A blender already off the board cannot be blown up again.
-    private static func pourSmoothie(
+    /// **Retained, no longer called.** Completing a smoothie pays points now; this is the
+    /// old effect, kept whole against its return. `internal` rather than `private` purely
+    /// so the tests can still exercise it — dead code that nothing runs is dead code that
+    /// quietly stops working. Wire it back in by calling it from
+    /// `recordBlendForWildcards` in place of `awardSmoothie`.
+    static func pourSmoothie(
         for player: PlayerID,
         in state: inout GameState,
         events: inout [GameEvent]

@@ -49,7 +49,15 @@ public struct EvaluationWeights: Sendable, Hashable {
     /// no delivery or blend can outbid; at six moves away it is 11, which is background
     /// noise. This is what lets the CPU spend a tempo getting into position to counter
     /// rather than only ever countering when the counter happens to also be greedy.
-    public var alternateWinThreat: Int = 40_000
+    ///
+    /// Held down to 4,000 by measurement, not taste. At 40,000 the smoothie bonus made a
+    /// Blenderama run cheap enough that both Medium CPUs simply raced for one, neither
+    /// ever scored, so neither run was ever negated, and ten of twenty-four matches ended
+    /// on turn 31 with the winner on −16. Exploitable as well as dull: score once and the
+    /// CPU has thrown away its whole board. At 4,000 alternate wins still happen — five
+    /// Banana Splits in twenty-four — without crowding out ordinary play. At 0 they never
+    /// happen at all, which wastes the wildcard rules.
+    public var alternateWinThreat: Int = 4_000
     public var smoothieProgress: Int = 22
     public var goldenPineapple: Int = 30
 
@@ -115,11 +123,7 @@ enum Evaluation {
         }
 
         total += counterReadiness(state, for: player, weights: weights)
-        // The stolen ingredient counts as a fourth step, so a CPU sitting on all three
-        // types still values the opponent blend that actually pours the thing.
-        let smoothie = state.wildcards.smoothie[player]
-        let recipe = smoothie.collectedCount + (smoothie.includesOpposingFruit ? 1 : 0)
-        total += recipe * weights.smoothieProgress
+        total += state.wildcards.smoothie[player].collectedCount * weights.smoothieProgress
         if let golden = state.wildcards.goldenPineapple[player], state.piece(with: golden) != nil {
             total += weights.goldenPineapple
         }

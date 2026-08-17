@@ -53,20 +53,12 @@ public struct SmoothieProgress: Hashable, Codable, Sendable {
     public var banana = false
     public var strawberry = false
     public var pineapple = false
-    /// At least one fruit in the recipe came off the opponent. A smoothie made entirely
-    /// out of your own fruit does not pour, however many types went into it — the recipe
-    /// takes a stolen ingredient.
-    public var includesOpposingFruit = false
 
     public init() {}
 
-    /// One of every fruit type, ignoring whose they were.
-    public var hasEveryKind: Bool { banana && strawberry && pineapple }
-    /// Everything the recipe asks for: all three types, at least one of them theirs.
-    public var isComplete: Bool { hasEveryKind && includesOpposingFruit }
-    /// True once the types are all in but the stolen ingredient is still missing — the
-    /// state worth calling out, since it looks finished and is not.
-    public var needsOpposingFruit: Bool { hasEveryKind && !includesOpposingFruit }
+    /// One of every fruit type, whoever grew them. There is no restriction on whose
+    /// fruit counts: a recipe made entirely of your own is a smoothie like any other.
+    public var isComplete: Bool { banana && strawberry && pineapple }
     public var collectedCount: Int { [banana, strawberry, pineapple].filter { $0 }.count }
 
     public func has(_ kind: PieceKind) -> Bool {
@@ -78,14 +70,13 @@ public struct SmoothieProgress: Hashable, Codable, Sendable {
         }
     }
 
-    mutating func record(_ kind: PieceKind, opposing: Bool) {
+    mutating func record(_ kind: PieceKind) {
         switch kind {
         case .banana: banana = true
         case .strawberry: strawberry = true
         case .pineapple: pineapple = true
         case .blender: break
         }
-        if opposing, kind != .blender { includesOpposingFruit = true }
     }
 }
 

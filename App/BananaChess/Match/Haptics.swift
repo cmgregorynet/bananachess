@@ -19,7 +19,7 @@ enum Haptics {
             UIImpactFeedbackGenerator(style: .soft).impactOccurred()
         case .blended:
             UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-        case .delivered:
+        case .delivered, .smoothiePoured:
             UINotificationFeedbackGenerator().notificationOccurred(.success)
         case .gameEnded:
             UINotificationFeedbackGenerator().notificationOccurred(.success)

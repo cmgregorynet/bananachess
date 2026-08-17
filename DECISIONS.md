@@ -91,19 +91,34 @@ game. Both players' runs are dead by a median of turn 43 in Medium self-play, no
 survived 24 matches, and the tracker had to stop announcing "countered" because it became
 the normal state of every match.
 
-**A smoothie needs at least one of the opponent's fruit in it.** *Resolved by Charles,
-16 Aug 2026 — this replaces the original reading below.* Self-blends still count toward
-the three types, but a recipe made entirely of your own fruit does not pour. `rulesVersion
-10`.
+**A Tropical Smoothie pays three points and takes any fruit.** *Charles, 17 Aug 2026 —
+`rulesVersion 13`.* One of every fruit type pays `RulesEngine.smoothieAward`, once each
+per match, with no restriction on whose fruit went in.
 
-The original reading: the brief says "blends at least one of each fruit type" without
-saying whose, so self-blends counted on their own, which let a Blenderama run pour a
-smoothie on the way through for free. That side effect is what the restriction removes — a
-smoothie now always means going and taking something off the other player, so it cannot be
-farmed from your own half of the board.
+This supersedes two earlier decisions recorded here: that self-blends counted toward a
+smoothie on their own (the original reading of the brief), and that rules 10 restriction
+requiring a stolen ingredient. `SmoothieProgress.includesOpposingFruit` is gone with the
+restriction, which is why the payload schema moved to 11.
 
-Recorded as `SmoothieProgress.includesOpposingFruit`: a flag rather than a derived count,
-because the fruit that satisfied it is gone by the time anyone asks.
+**The blender blowout is kept as retained code, on request.** `pourSmoothie` and the
+`.smoothie` event stay whole and unemitted. Retained code that nothing exercises stops
+working without anyone noticing, so `pourSmoothie` was made `internal` and four tests
+drive it directly — it is out of service, not unverified. One line in
+`recordBlendForWildcards` switches it back on.
+
+**The smoothie bonus forced the alternate-win weight down.** Measured, not guessed. Three
+points back on a self-blend makes a Blenderama run cost nine rather than twelve, which was
+enough for `alternateWinThreat` at 40,000 to take over Medium play entirely: both CPUs
+raced for a Blenderama, neither ever scored, so neither run was negated, and ten of
+twenty-four matches ended on turn 31 with the winner on −16. Legitimate under the rules —
+the loser's peak score was 0 in every one — but degenerate, and exploitable, since scoring
+once leaves the CPU having binned its whole board.
+
+At 4,000 the alternate routes stay live without crowding out ordinary play: five Banana
+Splits, sixteen on score, one draw. At 0 no alternate win ever happens at Medium, which
+wastes the wildcard rules. The difficulty ladder holds at 12/12 in all three. Two of
+twenty-four matches still stall at 4,000, which is the known terminal-condition gap in
+wildcard rather than anything this weight controls.
 
 **A blender already knocked out is not re-timed by a smoothie.** It is not on the board
 to blow up, and resetting its clock would quietly extend a penalty it is already serving.

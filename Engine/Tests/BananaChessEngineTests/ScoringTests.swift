@@ -211,26 +211,6 @@ struct BlenderCombatTests {
         )
     }
 
-    @Test("A smoothie still reaches a blender on its spawn — this stops captures, not smoothies")
-    func spawnProtectionDoesNotStopASmoothie() throws {
-        var builder = BoardBuilder()
-        let blender = builder.blender(.one, at: position(3, 3), home: position(5, 1))
-        _ = builder.fruit(.banana, .two, at: position(2, 2))
-        let onSpawn = builder.blender(.two, at: position(0, 1), home: position(0, 1))
-        _ = builder.blender(.two, at: position(0, 4), home: position(0, 4))
-        _ = builder.fruit(.banana, .one, at: position(5, 5))
-        _ = builder.fruit(.banana, .two, at: position(1, 5))
-        var state = builder.state(ruleSet: .wildcard)
-        state.wildcards.smoothie[.one].strawberry = true
-        state.wildcards.smoothie[.one].pineapple = true
-        state.wildcards.smoothie[.one].includesOpposingFruit = true
-
-        let result = try RulesEngine.apply(state.move(blender, to: position(2, 2)), to: state)
-
-        #expect(result.state.wildcards.smoothieFired[.one])
-        #expect(result.state.isOffBoard(onSpawn), "sitting at home is no defence against a smoothie")
-    }
-
     @Test("A blender that runs into another destroys it and takes the square")
     func attackerDestroysAndAdvances() throws {
         let f = fixture()

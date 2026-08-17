@@ -15,7 +15,8 @@ public struct MatchPayload: Codable, Sendable, Hashable {
     /// 8 — the Mega Blender is gone from the state.
     /// 9 — restore actions name the spawn they land on.
     /// 10 — smoothie progress records whether a stolen ingredient went in.
-    public static let currentSchemaVersion = 10
+    /// 11 — and stops again: the smoothie takes any fruit.
+    public static let currentSchemaVersion = 11
 
     public let schemaVersion: Int
     public let rulesVersion: Int
@@ -85,7 +86,7 @@ public enum MatchCodecError: Error, Equatable, LocalizedError {
             "This match was played on a newer version of Banana Chess. Update to continue."
         case .outdatedSchema, .incompatibleRules:
             "This match was started under the previous rules and can't be continued. "
-                + "Start a new match to play with blender knockouts."
+                + "Start a new match to play with the current ones."
         case .malformed:
             "This match's data could not be read."
         }

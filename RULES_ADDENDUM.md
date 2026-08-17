@@ -2,7 +2,7 @@
 
 Corrections and additions on top of the original handoffs. This supersedes every `.docx`
 in this directory where they disagree, and records the questions they left open.
-**Rules version 9.**
+**Rules version 13.**
 
 The `.docx` files are left as the original handoffs; nothing in them has been edited.
 This file is the correction of record.
@@ -14,7 +14,7 @@ current rules for the three areas that changed:
 
 ### Blender combat (standard rules — applies to every match)
 
-Combat losses are the *permanent* kind. A Tropical Smoothie is not — see below.
+Combat losses are the *permanent* kind.
 
 - A blender that moves onto another **destroys it** and takes the square. Nobody scores
   for it. This works on your own blenders as well as theirs.
@@ -53,29 +53,27 @@ already hands the attacker a free kill at no cost to itself; adding a second mov
 made first blood close to decisive. Removing it dropped the measured first-kill win rate
 from **88% to 60%** at Medium — see §6.
 
-### Tropical Smoothie (wildcard)
+### Tropical Smoothie (wildcard) — a bonus, not a weapon
 
-**The recipe needs a stolen ingredient.** One of every fruit type, *and at least one of
-those fruit taken off the opponent*. Three of your own fruit is not a smoothie, however
-many types went into it — it is twelve points of self-harm and nothing else.
+> Blend at least one of every fruit type and collect **three points**. Whose fruit went in
+> does not matter: your own count exactly the same as theirs. Once each per match.
 
-This closes the route where a Blenderama run poured a free smoothie on the way through:
-a smoothie now always costs you a trip into their half. The types may be collected in any
-order, and the stolen one counts whenever it goes in, first or last. The tracker shows it
-as a fourth ingredient in the opponent's colour, so "all three types and still nothing
-happened" is visible on the board rather than a surprise.
+This replaces both of the previous versions of the rule. The smoothie no longer blows the
+opponent's blenders off the board, and the "at least one of theirs" restriction added in
+rules 10 is gone with it — a recipe made entirely of your own fruit is a smoothie like any
+other. Blending three of your own still costs six points on the way, so an all-self
+smoothie remains a net loss; it is simply no longer *forbidden*.
 
-Blending one of every fruit type still blows both of the opponent's blenders off the
-board, but **it costs them a turn, not the blenders**. They play exactly one turn without
-them, and the blenders come back on their own, for nothing, at the start of the turn after
-that. If a spawn is occupied at that moment the blender waits for it to clear, exactly as
-a delivered banana does.
+**The blowout logic is retained, not deleted.** `RulesEngine.pourSmoothie`, the
+`.smoothie` event, `smoothieBlackoutTurns`, and the respawn-scheduling path that returns
+victims for free are all still there and still correct — kept deliberately so the effect
+can be switched back on. `pourSmoothie` is `internal` rather than `private` for one
+reason: the tests drive it directly, so the retained path cannot quietly rot while it is
+out of service. Four tests cover it, including that a blender standing on a spawn is safe
+from *capture* but not from a blowout.
 
-A smoothie victim therefore **cannot be bought back** — there is nothing to buy, it is
-already on its way. The board shows a countdown on the spawn rather than a price.
-
-This is the one place where the two ways of losing a blender differ, and the difference is
-the point: combat takes a blender off you, a smoothie takes a turn off you.
+To turn it back on, call `pourSmoothie` instead of `awardSmoothie` in
+`recordBlendForWildcards`. Nothing else needs restoring.
 
 ### Blenderama (wildcard) — now a shutout
 
@@ -302,7 +300,9 @@ Two things it deliberately does **not** do, both pinned by tests:
   entombed — which is why the CPU's `blenderOnCoveredSpawn` penalty survives the rule
   change rather than being retired by it. Removing it put the CPU straight back into the
   old loop one square over, at −424 points, and the self-play test caught it.
-- **A Tropical Smoothie still reaches it.** The rule stops captures, not smoothies.
+- **It stops captures, not everything.** The retained smoothie blowout goes straight
+  through it, which is pinned by a test so the distinction survives the blowout being
+  switched back on.
 
 Measured after the change: standard and wildcard, Easy and Medium, 24 matches each — all
 terminate bar one, medians 88–134 turns, and blender combat is as frequent as before

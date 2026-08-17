@@ -262,7 +262,7 @@ struct BananaDeliveryTests {
 @Suite("Tropical Smoothie")
 struct TropicalSmoothieTests {
     /// One of each fruit type, all reachable by a single blender in turn.
-    private func fixture() -> (state: GameState, blender: PieceID, victims: [PieceID]) {
+    private func fixture() -> (state: GameState, blender: PieceID, theirBlenders: [PieceID]) {
         var builder = BoardBuilder()
         let blender = builder.blender(.one, at: position(3, 3), home: position(5, 1))
         _ = builder.fruit(.banana, .two, at: position(2, 2))
@@ -276,172 +276,208 @@ struct TropicalSmoothieTests {
         return (builder.state(ruleSet: .wildcard), blender, [first, second].sorted())
     }
 
-    @Test("One of each fruit blows both of the opponent's blenders off the board")
-    func completingASmoothieBlowsUpBothBlenders() throws {
+    /// The walk that collects banana, strawberry and pineapple in that order.
+    private let recipeWalk = [
+        position(2, 2), position(1, 3), position(2, 4), position(3, 3), position(4, 4),
+    ]
+
+    @Test("One of each fruit type pays three points")
+    func completingASmoothiePaysThePoints() throws {
         let f = fixture()
         var state = f.state
 
-        // Banana, then strawberry: not a smoothie yet.
-        state = try RulesEngine.apply(state.move(f.blender, to: position(2, 2)), to: state).state
-        #expect(state.activeBlenders(ownedBy: .two).count == 2)
-        state.activePlayer = .one
-        state = try RulesEngine.apply(state.move(f.blender, to: position(1, 3)), to: state).state
-        state.activePlayer = .one
-        state = try RulesEngine.apply(state.move(f.blender, to: position(2, 4)), to: state).state
-        #expect(state.wildcards.smoothie[.one].collectedCount == 2)
-        #expect(state.activeBlenders(ownedBy: .two).count == 2, "still short a pineapple")
+        for destination in recipeWalk.dropLast() {
+            state.activePlayer = .one
+            state = try RulesEngine.apply(state.move(f.blender, to: destination), to: state).state
+        }
+        #expect(state.wildcards.smoothie[.one].collectedCount == 2, "still short a pineapple")
+        #expect(!state.wildcards.smoothieFired[.one])
 
-        // The pineapple completes it.
+        let before = state.scores.one
         state.activePlayer = .one
-        state = try RulesEngine.apply(state.move(f.blender, to: position(3, 3)), to: state).state
-        state.activePlayer = .one
-        let result = try RulesEngine.apply(state.move(f.blender, to: position(4, 4)), to: state)
+        let result = try RulesEngine.apply(state.move(f.blender, to: recipeWalk.last!), to: state)
 
         #expect(result.state.wildcards.smoothie[.one].isComplete)
-        #expect(result.state.activeBlenders(ownedBy: .two).isEmpty)
-        #expect(result.state.activeBlenders(ownedBy: .one).count == 1, "your own are untouched")
-        #expect(result.events.contains { if case .smoothie = $0 { true } else { false } })
+        #expect(result.state.wildcards.smoothieFired[.one])
+        #expect(
+            result.events.contains(
+                .smoothiePoured(player: .one, points: RulesEngine.smoothieAward)
+            )
+        )
+
+        // The pineapple it landed on is worth its own points; the smoothie adds three
+        // more on top.
+        let blended = result.events.compactMap { event -> Int? in
+            if case .blended(_, _, _, _, _, let points) = event { return points }
+            return nil
+        }.reduce(0, +)
+        #expect(result.state.scores.one == before + blended + RulesEngine.smoothieAward)
     }
 
-    @Test("Three of your own fruit is not a recipe — a smoothie needs one of theirs")
-    func ownFruitAloneDoesNotPour() throws {
+    @Test("Both of the opponent's blenders are left alone — a smoothie pays, it does not blow up")
+    func aSmoothieNoLongerTouchesBlenders() throws {
+        let f = fixture()
+        var state = f.state
+        for destination in recipeWalk {
+            state.activePlayer = .one
+            state = try RulesEngine.apply(state.move(f.blender, to: destination), to: state).state
+        }
+
+        #expect(state.wildcards.smoothieFired[.one])
+        #expect(state.activeBlenders(ownedBy: .two).count == 2, "both still standing")
+        #expect(state.destroyedBlenders(ownedBy: .two).isEmpty)
+        #expect(state.scores.two == 0, "and it cost them nothing at all")
+    }
+
+    @Test("Whose fruit went in does not matter — your own make a smoothie too")
+    func yourOwnFruitCountsJustTheSame() throws {
         var builder = BoardBuilder()
         let blender = builder.blender(.one, at: position(3, 3), home: position(5, 1))
         // Every type, and every one of them yours.
         _ = builder.fruit(.banana, .one, at: position(2, 2))
         _ = builder.fruit(.strawberry, .one, at: position(2, 4))
         _ = builder.fruit(.pineapple, .one, at: position(4, 4))
-        // The stolen ingredient, and spares either side so nobody runs out of fruit.
-        _ = builder.fruit(.strawberry, .two, at: position(3, 5))
         _ = builder.fruit(.banana, .one, at: position(5, 5))
         _ = builder.fruit(.banana, .two, at: position(1, 5))
         _ = builder.blender(.two, at: position(0, 1), home: position(0, 1))
-        _ = builder.blender(.two, at: position(0, 4), home: position(0, 4))
         var state = builder.state(ruleSet: .wildcard)
 
-        for destination in [position(2, 2), position(1, 3), position(2, 4), position(3, 3), position(4, 4)] {
+        for destination in recipeWalk.dropLast() {
             state.activePlayer = .one
             state = try RulesEngine.apply(state.move(blender, to: destination), to: state).state
         }
-
-        #expect(state.wildcards.smoothie[.one].hasEveryKind, "all three types went in")
-        #expect(state.wildcards.smoothie[.one].needsOpposingFruit)
-        #expect(!state.wildcards.smoothie[.one].isComplete)
-        #expect(!state.wildcards.smoothieFired[.one])
-        #expect(state.activeBlenders(ownedBy: .two).count == 2, "so their blenders stand")
-
-        // Steal one ingredient and the very same recipe pours.
         state.activePlayer = .one
-        let result = try RulesEngine.apply(state.move(blender, to: position(3, 5)), to: state)
+        let result = try RulesEngine.apply(state.move(blender, to: recipeWalk.last!), to: state)
 
-        #expect(result.state.wildcards.smoothie[.one].isComplete)
-        #expect(result.state.wildcards.smoothieFired[.one])
-        #expect(result.state.activeBlenders(ownedBy: .two).isEmpty)
-        #expect(result.events.contains { if case .smoothie = $0 { true } else { false } })
+        #expect(result.state.wildcards.smoothieFired[.one], "no stolen ingredient needed")
+        #expect(
+            result.events.contains(
+                .smoothiePoured(player: .one, points: RulesEngine.smoothieAward)
+            )
+        )
+        // Six points of self-harm on the way, three back at the end.
+        #expect(result.state.scores.one == -6 + RulesEngine.smoothieAward)
     }
 
-    @Test("The stolen ingredient counts whenever it goes in, not only last")
-    func theStolenIngredientCanComeFirst() throws {
+    @Test("A smoothie pays once and only once")
+    func aSmoothiePaysOnce() throws {
         var builder = BoardBuilder()
         let blender = builder.blender(.one, at: position(3, 3), home: position(5, 1))
-        // Theirs first, then two of your own to finish the set.
         _ = builder.fruit(.banana, .two, at: position(2, 2))
-        _ = builder.fruit(.strawberry, .one, at: position(2, 4))
-        _ = builder.fruit(.pineapple, .one, at: position(4, 4))
+        _ = builder.fruit(.banana, .two, at: position(4, 4))
         _ = builder.fruit(.banana, .one, at: position(5, 5))
         _ = builder.fruit(.banana, .two, at: position(1, 5))
         _ = builder.blender(.two, at: position(0, 1), home: position(0, 1))
-        _ = builder.blender(.two, at: position(0, 4), home: position(0, 4))
-        var state = builder.state(ruleSet: .wildcard)
-
-        for destination in [position(2, 2), position(1, 3), position(2, 4), position(3, 3)] {
-            state.activePlayer = .one
-            state = try RulesEngine.apply(state.move(blender, to: destination), to: state).state
-        }
-        #expect(state.wildcards.smoothie[.one].includesOpposingFruit)
-        #expect(!state.wildcards.smoothieFired[.one], "still short a pineapple")
-
-        state.activePlayer = .one
-        let result = try RulesEngine.apply(state.move(blender, to: position(4, 4)), to: state)
-        #expect(result.state.wildcards.smoothieFired[.one])
-        #expect(result.state.activeBlenders(ownedBy: .two).isEmpty)
-    }
-
-    @Test("A smoothie costs its victims one turn, not the match")
-    func smoothieVictimsComeBackOnTheirOwn() throws {
-        let f = fixture()
-        var state = f.state
-        for destination in [position(2, 2), position(1, 3), position(2, 4), position(3, 3)] {
-            state.activePlayer = .one
-            state = try RulesEngine.apply(state.move(f.blender, to: destination), to: state).state
-        }
-
-        // The move that completes the smoothie, and the turn it lands on.
-        state.activePlayer = .one
-        let smoothieTurn = state.turnNumber
-        state = try RulesEngine.apply(state.move(f.blender, to: position(4, 4)), to: state).state
-
-        #expect(state.destroyedBlenders(ownedBy: .two).count == 2)
-        #expect(state.piece(with: f.victims[0])?.respawnTurn == smoothieTurn + RulesEngine.smoothieBlackoutTurns)
-        #expect(state.piece(with: f.victims[0])?.isAwaitingRespawn == true)
-        #expect(state.piece(with: f.victims[0])?.needsBuyingBack == false, "no need to pay for it")
-
-        // Player two plays their one blenderless turn.
-        #expect(state.activePlayer == .two)
-        #expect(state.activeBlenders(ownedBy: .two).isEmpty, "that turn has no blenders in it")
-        state = try idleTransition(state).state
-
-        // And they are back, for nothing, at the start of the next turn.
-        #expect(state.square(of: f.victims[0]) == position(0, 1))
-        #expect(state.square(of: f.victims[1]) == position(0, 4))
-        #expect(state.scores.two == 0, "and it cost them nothing")
-    }
-
-    @Test("A smoothie victim cannot be bought back — it is already on its way")
-    func smoothieVictimsAreNotForSale() throws {
-        var builder = BoardBuilder()
-        let blender = builder.blender(.one, at: position(3, 3), home: position(5, 1))
-        _ = builder.fruit(.banana, .two, at: position(2, 2))
-        let victim = builder.blender(.two, at: position(0, 1), home: position(0, 1))
-        _ = builder.fruit(.banana, .one, at: position(5, 5))
-        _ = builder.fruit(.banana, .two, at: position(1, 5))
-        var state = builder.state(ruleSet: .wildcard)
-        state.wildcards.smoothie[.one].strawberry = true
-        state.wildcards.smoothie[.one].pineapple = true
-
-        var current = try RulesEngine.apply(state.move(blender, to: position(2, 2)), to: state).state
-        #expect(current.isOffBoard(victim))
-
-        current.activePlayer = .two
-        #expect(throws: RulesError.blenderReturningOnItsOwn(victim)) {
-            try RulesEngine.apply(.restoreBlender(pieceID: victim, at: position(0, 1)), to: current)
-        }
-        #expect(!RulesEngine.legalActions(in: current).contains(.restoreBlender(pieceID: victim, at: position(0, 1))))
-    }
-
-    @Test("A smoothie only goes off once")
-    func smoothieFiresOnce() throws {
-        var builder = BoardBuilder()
-        let blender = builder.blender(.one, at: position(3, 3), home: position(5, 1))
-        _ = builder.fruit(.banana, .two, at: position(2, 2))
-        let survivor = builder.blender(.two, at: position(0, 1), home: position(0, 1))
-        _ = builder.fruit(.banana, .one, at: position(5, 5))
-        _ = builder.fruit(.banana, .two, at: position(1, 5))
         var state = builder.state(ruleSet: .wildcard)
         // Already collected strawberry and pineapple.
         state.wildcards.smoothie[.one].strawberry = true
         state.wildcards.smoothie[.one].pineapple = true
 
         state = try RulesEngine.apply(state.move(blender, to: position(2, 2)), to: state).state
-        #expect(state.isOffBoard(survivor), "the banana completed it")
-        #expect(state.wildcards.smoothieFired[.one])
+        #expect(state.wildcards.smoothieFired[.one], "the banana completed it")
+        let afterFirst = state.scores.one
 
-        // Let it come back on its own, then blend again — no second blast.
-        var later = try advanceTurns(2, from: state)
-        #expect(later.square(of: survivor) == position(0, 1))
-        later.activePlayer = .one
-        let after = try RulesEngine.apply(later.move(blender, to: position(3, 3)), to: later)
-        #expect(after.state.square(of: survivor) == position(0, 1))
+        // Blend another banana: points for the fruit, but no second bonus.
+        state.activePlayer = .one
+        state = try RulesEngine.apply(state.move(blender, to: position(3, 3)), to: state).state
+        state.activePlayer = .one
+        let again = try RulesEngine.apply(state.move(blender, to: position(4, 4)), to: state)
+
+        #expect(!again.events.contains { if case .smoothiePoured = $0 { true } else { false } })
+        #expect(again.state.scores.one == afterFirst + PieceKind.banana.baseValue)
+    }
+
+    @Test("A standard match pays no smoothie bonus")
+    func standardRulesPayNothing() throws {
+        var builder = BoardBuilder()
+        let blender = builder.blender(.one, at: position(3, 3), home: position(5, 1))
+        _ = builder.fruit(.banana, .two, at: position(2, 2))
+        _ = builder.fruit(.banana, .one, at: position(5, 5))
+        _ = builder.fruit(.banana, .two, at: position(1, 5))
+        _ = builder.blender(.two, at: position(0, 1), home: position(0, 1))
+        var state = builder.state()
+        state.wildcards.smoothie[.one].strawberry = true
+        state.wildcards.smoothie[.one].pineapple = true
+
+        let result = try RulesEngine.apply(state.move(blender, to: position(2, 2)), to: state)
+
+        #expect(!result.state.wildcards.smoothieFired[.one])
+        #expect(result.state.scores.one == PieceKind.banana.baseValue, "the fruit, and nothing else")
+    }
+
+    // MARK: - The retained blowout
+    //
+    // `RulesEngine.pourSmoothie` is no longer called by the rules — a smoothie pays
+    // points instead — but it is kept intact so the effect can be switched back on.
+    // These drive it directly so it cannot quietly rot in the meantime.
+
+    @Test("Retained: the blowout still takes both blenders off the board")
+    func theRetainedBlowoutStillWorks() throws {
+        let f = fixture()
+        var state = f.state
+        var events: [GameEvent] = []
+
+        RulesEngine.pourSmoothie(for: .one, in: &state, events: &events)
+
+        #expect(state.activeBlenders(ownedBy: .two).isEmpty)
+        #expect(state.activeBlenders(ownedBy: .one).count == 1, "your own are untouched")
+        #expect(events.contains { if case .smoothie = $0 { true } else { false } })
+
+        let victim = state.piece(with: f.theirBlenders[0])
+        #expect(victim?.respawnTurn == state.turnNumber + RulesEngine.smoothieBlackoutTurns)
+        #expect(victim?.needsBuyingBack == false, "no need to pay for it")
+    }
+
+    @Test("Retained: standing on a spawn is no defence against the blowout")
+    func theRetainedBlowoutIgnoresSpawnProtection() throws {
+        // Both of player two's blenders are sitting on their own spawns, which makes
+        // them safe from capture. The blowout is not a capture.
+        let f = fixture()
+        var state = f.state
+        #expect(f.theirBlenders.allSatisfy { id in
+            guard let piece = state.piece(with: id) else { return false }
+            return RulesEngine.isOnASpawn(piece, in: state)
+        })
+
+        var events: [GameEvent] = []
+        RulesEngine.pourSmoothie(for: .one, in: &state, events: &events)
+
+        #expect(state.activeBlenders(ownedBy: .two).isEmpty)
+    }
+
+    @Test("Retained: victims come back by themselves, for nothing")
+    func theRetainedVictimsReturnOnTheirOwn() throws {
+        let f = fixture()
+        var state = f.state
+        var events: [GameEvent] = []
+        RulesEngine.pourSmoothie(for: .one, in: &state, events: &events)
+        state.activePlayer = .two
+
+        // Player two plays their one blenderless turn, and they are back after it.
+        #expect(state.activeBlenders(ownedBy: .two).isEmpty)
+        state = try advanceTurns(2, from: state)
+
+        #expect(state.square(of: f.theirBlenders[0]) == position(0, 1))
+        #expect(state.square(of: f.theirBlenders[1]) == position(0, 4))
+        #expect(state.scores.two == 0, "and it cost them nothing")
+    }
+
+    @Test("Retained: a victim on its way back cannot be bought back")
+    func theRetainedVictimsAreNotForSale() throws {
+        let f = fixture()
+        var state = f.state
+        var events: [GameEvent] = []
+        RulesEngine.pourSmoothie(for: .one, in: &state, events: &events)
+        state.activePlayer = .two
+
+        let victim = f.theirBlenders[0]
+        #expect(throws: RulesError.blenderReturningOnItsOwn(victim)) {
+            try RulesEngine.apply(.restoreBlender(pieceID: victim, at: position(0, 1)), to: state)
+        }
+        #expect(
+            !RulesEngine.legalActions(in: state)
+                .contains(.restoreBlender(pieceID: victim, at: position(0, 1)))
+        )
     }
 }
 
