@@ -194,3 +194,125 @@ struct MovementTests {
         #expect(throws: RulesError.self) { try RulesEngine.apply(stale, to: state) }
     }
 }
+
+@Suite("Board setups")
+struct BoardSetupTests {
+    @Test("Every setup deals the same pieces, only differently placed", arguments: BoardSetup.allCases)
+    func everySetupDealsTheSamePieces(setup: BoardSetup) {
+        let state = GameSetup.newGame(boardSetup: setup, seed: 99)
+
+        #expect(state.boardSetup == setup, "and the match says which it is")
+        #expect(state.pieces.count == 16)
+        for player in PlayerID.allCases {
+            #expect(state.fruit(ownedBy: player).count == GameSetup.fruitCount)
+            #expect(state.blenders(ownedBy: player).count == 2)
+            for kind in [PieceKind.banana, .strawberry, .pineapple] {
+                #expect(state.fruit(ownedBy: player).filter { $0.kind == kind }.count == 2)
+            }
+        }
+        // No two pieces ever share a square.
+        let squares = state.pieces.compactMap(\.position)
+        #expect(Set(squares).count == squares.count)
+        // Everything starts on its own square, which is where bananas recycle to.
+        #expect(state.pieces.allSatisfy { $0.position == $0.home })
+        #expect(!state.status.isOver)
+        #expect(!RulesEngine.legalMoves(in: state).isEmpty)
+    }
+
+    @Test("Blendy is Standard with the two rows swapped")
+    func blendyIsStandardInverted() {
+        let standard = GameSetup.newGame(boardSetup: .standard)
+        let blendy = GameSetup.newGame(boardSetup: .blendy)
+
+        for player in PlayerID.allCases {
+            #expect(standard.blenders(ownedBy: player).allSatisfy { $0.position?.row == player.backRow })
+            #expect(standard.fruit(ownedBy: player).allSatisfy { $0.position?.row == player.fruitRow })
+
+            #expect(blendy.fruit(ownedBy: player).allSatisfy { $0.position?.row == player.backRow })
+            #expect(blendy.blenders(ownedBy: player).allSatisfy { $0.position?.row == player.fruitRow })
+
+            // Same fruit in the same file, one row further back.
+            for (mine, theirs) in zip(
+                standard.fruit(ownedBy: player).sorted(by: { $0.id < $1.id }),
+                blendy.fruit(ownedBy: player).sorted(by: { $0.id < $1.id })
+            ) {
+                #expect(mine.kind == theirs.kind)
+                #expect(mine.position?.column == theirs.position?.column)
+            }
+        }
+    }
+
+    @Test("Blendy keeps a player's two spawns on opposite colours")
+    func blendySpawnsStayOnOppositeColours() {
+        // The invariant the whole buy-back rule leans on: a blender never changes
+        // colour, so two spawns of the same colour would leave half the board uncovered.
+        for setup in [BoardSetup.standard, .blendy] {
+            let state = GameSetup.newGame(boardSetup: setup)
+            for player in PlayerID.allCases {
+                let colours = state.blenders(ownedBy: player).compactMap(\.position).map {
+                    ($0.row + $0.column).isMultiple(of: 2)
+                }
+                #expect(Set(colours).count == 2, "\(setup) leaves \(player) covering one colour")
+            }
+        }
+    }
+
+    @Test("A random board never starts a fruit on its own delivery row")
+    func randomNeverDealsAFreeDelivery() {
+        // The one placement rule, checked across many boards rather than one.
+        for seed in UInt64(1)...200 {
+            let state = GameSetup.newGame(boardSetup: .random, seed: seed)
+            for player in PlayerID.allCases {
+                #expect(
+                    state.fruit(ownedBy: player).allSatisfy { $0.position?.row != player.deliveryRow },
+                    "seed \(seed) dealt \(player) a free delivery"
+                )
+            }
+            let squares = state.pieces.compactMap(\.position)
+            #expect(Set(squares).count == 16, "seed \(seed) overlapped two pieces")
+        }
+    }
+
+    @Test("A seed deals the same board twice, and different seeds do not")
+    func randomIsReproducibleFromItsSeed() {
+        #expect(
+            GameSetup.newGame(boardSetup: .random, seed: 7).pieces
+                == GameSetup.newGame(boardSetup: .random, seed: 7).pieces
+        )
+
+        // Not a strict requirement of the rules, but a mode that quietly dealt the same
+        // board every time would be a bug nobody noticed.
+        let boards = Set((UInt64(1)...50).map { seed in
+            GameSetup.newGame(boardSetup: .random, seed: seed).pieces.map(\.position).description
+        })
+        #expect(boards.count > 45, "seeds should not collide on the same arrangement")
+    }
+
+    @Test("A random board plays: it is legal, scored, and finishes", .timeLimit(.minutes(2)))
+    func randomBoardsPlayThrough() {
+        for seed in UInt64(1)...12 {
+            var state = GameSetup.newGame(ruleSet: .wildcard, boardSetup: .random, seed: seed)
+            let one = CPUPlayer(difficulty: .easy, seed: seed)
+            let two = CPUPlayer(difficulty: .easy, seed: seed &* 7 &+ 3)
+            while !state.status.isOver, state.turnNumber < 800 {
+                let cpu = state.activePlayer == .one ? one : two
+                guard let action = cpu.selectAction(in: state),
+                      let result = try? RulesEngine.apply(action, to: state) else { break }
+                state = result.state
+                let squares = state.pieces.compactMap(\.position)
+                #expect(Set(squares).count == squares.count, "pieces overlapped on seed \(seed)")
+            }
+            #expect(state.status.isOver, "seed \(seed) never finished")
+            #expect(state.boardSetup == .random, "and it still knows what it was dealt")
+        }
+    }
+
+    @Test("The setup survives a round trip through a payload")
+    func setupSurvivesEncoding() throws {
+        let payload = MatchPayload.newMatch(id: "m", ruleSet: .wildcard, boardSetup: .blendy)
+        let decoded = try MatchCodec.decode(try MatchCodec.encode(payload))
+
+        #expect(decoded.state.boardSetup == .blendy)
+        #expect(decoded.state.pieces == payload.state.pieces)
+    }
+}

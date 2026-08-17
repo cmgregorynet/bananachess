@@ -75,6 +75,64 @@ from *capture* but not from a blowout.
 To turn it back on, call `pourSmoothie` instead of `awardSmoothie` in
 `recordBlendForWildcards`. Nothing else needs restoring.
 
+### Board setups — Standard, Blendy, Random
+
+Three opening arrangements, chosen on the start screen and orthogonal to the rule set:
+any board can be played under either set of rules. The choice is carried in the state, so
+a saved match and an online payload both say which board they were dealt.
+
+- **Standard.** Blenders on the back row, fruit in front. The original arrangement.
+- **Blendy.** The two rows swapped: fruit on the back row, blenders in front of it.
+- **Random.** Every piece on a random square, subject to one rule — **no fruit starts on
+  its own delivery row**. A fruit that begins there has a free delivery on turn one for
+  the price of a sideways step, which is not a random opening, it is a random winner.
+  Nothing else is constrained: a blender may start next to enemy fruit and the two sides
+  may be lopsided. That is the mode. A random board is dealt once, by whoever creates the
+  match, and travels inside the state — an online opponent receives the board rather than
+  a seed to re-roll.
+
+**Blendy broke the CPU, and that was worth finding.** As first built, sixteen of sixteen
+Blendy self-play matches never ended: after 600 turns, zero fruit blended, zero delivered,
+all twelve fruit still on the board, and both players past **−290 points** — the entire
+score spent on 4,218 blender buy-backs between them.
+
+The cause is structural to the board. Blendy puts the fruit *behind* the blenders, so at
+the opening a blender has no fruit within reach in any direction, and both delivery rows
+are walled off by the enemy's fruit line, which cannot be captured because fruit never
+captures. The only immediately profitable move on the board is attacking the other
+blender. Standard play hid this behind a fruit line sitting directly in front of each
+blender.
+
+What made it unbounded was the CPU's price on a destroyed blender: at −450 against a
+three-point (−300) restore, every rebuy scored +150, so two blenders with nothing better
+to do traded forever and both paid for it. Swept −450 → −150; **−250** is where every
+board finishes, buy-backs remain a real part of play (28 across sixteen standard matches,
+against 0 at −150), and the difficulty ladder holds. Blendy now measures as healthily as
+Standard: 0 stalls in 30, median 74 turns.
+
+**Measured, 30 Medium self-play matches per combination, after the fix:**
+
+| Board | Rules | Outcome | Stalls | Median turns | First mover wins |
+|---|---|---|---|---|---|
+| Standard | standard | 29 score, 1 draw | 0 | 78 | 72% |
+| Standard | wildcard | 18 score, 7 Banana Split | 5 | 86 | 80% |
+| Blendy | standard | 29 score, 1 draw | 0 | 74 | 79% |
+| Blendy | wildcard | 16 score, 7 Split, 1 draw | 6 | 118 | 65% |
+| Random | standard | 27 score, 2 draws | 1 | 39 | 59% |
+| Random | wildcard | 8 score, 21 Banana Split | 1 | 22 | 55% |
+
+Two things to note in that table, neither of them fixed:
+
+1. **Random plus wildcard is a Banana Split sprint** — 21 of 29 decided matches, median 22
+   turns. The placement rule keeps a fruit off its delivery row but not one row short of
+   it, and a banana that starts one step away can deliver, recycle to that same home
+   square, and do it again. Three deliveries wins. Widening the rule to "no fruit within
+   one row of its delivery row" would settle it, but that is a change to the mode as
+   specified rather than a bug in it.
+2. **Random is the fairest board of the three.** First mover wins 55–59% of decided
+   matches on a scattered board against 72–80% on the ordered ones. A lopsided random
+   deal turns out to matter less than moving first does.
+
 ### Blenderama (wildcard) — now a shutout
 
 > Blend every one of your own fruit **yourself** and you win outright — but only if the

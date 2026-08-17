@@ -618,8 +618,13 @@ final class MatchViewModel {
     func restart() {
         animationTask?.cancel()
         cpuTask?.cancel()
-        // A restart is the same match again, so it keeps the rule set it started under.
-        let fresh = GameSetup.newGame(ruleSet: authoritativeState.ruleSet)
+        // A restart is the same match again, so it keeps the rule set and the board mode
+        // it started under. On a random board that means a *new* scatter rather than the
+        // same one again: the point of the mode is a board you have not seen.
+        let fresh = GameSetup.newGame(
+            ruleSet: authoritativeState.ruleSet,
+            boardSetup: authoritativeState.boardSetup
+        )
         undoStack.removeAll()
         authoritativeState = fresh
         displayState = fresh

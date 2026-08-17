@@ -16,7 +16,8 @@ public struct MatchPayload: Codable, Sendable, Hashable {
     /// 9 — restore actions name the spawn they land on.
     /// 10 — smoothie progress records whether a stolen ingredient went in.
     /// 11 — and stops again: the smoothie takes any fruit.
-    public static let currentSchemaVersion = 11
+    /// 12 — a match carries the board arrangement it was dealt.
+    public static let currentSchemaVersion = 12
 
     public let schemaVersion: Int
     public let rulesVersion: Int
@@ -45,12 +46,17 @@ public struct MatchPayload: Codable, Sendable, Hashable {
     public static func newMatch(
         id: String,
         startingPlayer: PlayerID = .one,
-        ruleSet: RuleSet = .standard
+        ruleSet: RuleSet = .standard,
+        boardSetup: BoardSetup = .standard
     ) -> MatchPayload {
         MatchPayload(
             matchID: id,
             moveNumber: 0,
-            state: GameSetup.newGame(startingPlayer: startingPlayer, ruleSet: ruleSet)
+            state: GameSetup.newGame(
+                startingPlayer: startingPlayer,
+                ruleSet: ruleSet,
+                boardSetup: boardSetup
+            )
         )
     }
 }

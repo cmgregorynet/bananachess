@@ -34,7 +34,18 @@ public struct EvaluationWeights: Sendable, Hashable {
     /// costs to restore one: a blender is a scoring engine that can take a pineapple
     /// every few turns, so valuing it below its own replacement cost would mean never
     /// buying one back — which is exactly what the CPU did at -70.
-    public var blenderDestroyed: Int = -450
+    ///
+    /// But only *just* above, and the Blendy board is what proved it. At -450 a rebuy
+    /// was worth +150 against its own cost, so when two blenders had nothing better to
+    /// do they traded forever and both sides paid for it: 4,218 buy-backs across sixteen
+    /// Blendy matches, none of which ever ended, with both players past -290 and not one
+    /// fruit blended. Blendy exposes it because its blenders start facing an empty middle
+    /// with no fruit in reach; standard play hid it behind a fruit line.
+    ///
+    /// Swept -450 → -150. At -250 every board finishes, buy-backs stay a real part of
+    /// play (28 across sixteen standard matches, against 0 at -150), and the difficulty
+    /// ladder holds at 10/10.
+    public var blenderDestroyed: Int = -250
 
     /// Per fruit still standing on the emptier side. Fruit is the clock now: the match
     /// ends when either player runs out, so a player who is ahead wants it short and a

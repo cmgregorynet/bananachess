@@ -4,7 +4,14 @@ import XCTest
 final class BlenderCombatUITests: XCTestCase {
     func testBuyingBackADestroyedBlender() {
         let app = XCUIApplication()
-        app.launchArguments += ["-hasSeenTeachingOverlay", "YES", "-wildcardRulesEnabled", "NO"]
+        // Both the rule set and the board are stated per launch. This test walks fixed
+        // coordinates, so inheriting a stored Blendy or Random board would move every
+        // piece it reaches for.
+        app.launchArguments += [
+            "-hasSeenTeachingOverlay", "YES",
+            "-wildcardRulesEnabled", "NO",
+            "-boardSetup", "standard",
+        ]
         app.launch()
         app.buttons["Local Two Player. Share one phone and take turns."].tap()
         _ = app.buttons["square_4_0"].waitForExistence(timeout: 5)

@@ -36,6 +36,10 @@ public struct GameState: Hashable, Codable, Sendable {
     /// Fixed for the life of the match. Carried here so a saved game or an online
     /// payload always states which game it is.
     public var ruleSet: RuleSet
+    /// Which opening arrangement this match was dealt. Nothing in the rules reads it —
+    /// the arrangement is already in `pieces` — but a match should be able to say what
+    /// it is, to the player and in a payload.
+    public var boardSetup: BoardSetup
     /// Untouched unless `ruleSet` is `.wildcard`, but always present so the shape of a
     /// stored match never depends on which rules it is played under.
     public var wildcards: WildcardProgress
@@ -48,6 +52,7 @@ public struct GameState: Hashable, Codable, Sendable {
         turnNumber: Int = 1,
         history: [GameAction] = [],
         ruleSet: RuleSet = .standard,
+        boardSetup: BoardSetup = .standard,
         wildcards: WildcardProgress = WildcardProgress()
     ) {
         self.pieces = pieces.sorted { $0.id < $1.id }
@@ -57,6 +62,7 @@ public struct GameState: Hashable, Codable, Sendable {
         self.turnNumber = turnNumber
         self.history = history
         self.ruleSet = ruleSet
+        self.boardSetup = boardSetup
         self.wildcards = wildcards
     }
 
@@ -83,6 +89,13 @@ public struct GameState: Hashable, Codable, Sendable {
     /// Only the fruit actually standing on the board.
     public func onBoardFruit(ownedBy player: PlayerID) -> [Piece] {
         fruit(ownedBy: player).filter(\.isOnBoard)
+    }
+
+    /// Every blender spawn on the board, still marked once its blender has left it.
+    /// Read from the pieces rather than from a constant, because where the spawns are
+    /// depends on which `BoardSetup` the match was dealt.
+    public var allSpawnSquares: Set<Position> {
+        Set(pieces.filter(\.isBlender).compactMap(\.home))
     }
 
     /// Every blender the player owns, including any currently off the board.

@@ -7,7 +7,9 @@ struct BoardView: View {
     let viewModel: MatchViewModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    private var blenderHomes: Set<Position> { Set(GameSetup.allBlenderHomes) }
+    /// Read from the match, not from a constant: where the spawns are depends on which
+    /// board this match was dealt.
+    private var blenderHomes: Set<Position> { viewModel.displayState.allSpawnSquares }
 
     var body: some View {
         GeometryReader { proxy in

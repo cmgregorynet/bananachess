@@ -81,10 +81,11 @@ public protocol OnlineMatchService: Sendable {
     func authenticateLocalPlayer() async throws -> OnlineLocalPlayer
     func loadMatches() async throws -> [OnlineMatchSummary]
     func loadMatch(id: String) async throws -> OnlineMatchSummary
-    /// The rule set is fixed by whoever creates the match and travels in its payload,
-    /// so the other device never has to be told separately.
-    func startAutomatch(ruleSet: RuleSet) async throws -> OnlineMatchSummary
-    func inviteFriend(ruleSet: RuleSet) async throws -> OnlineMatchSummary
+    /// The rule set and the board are both fixed by whoever creates the match and travel
+    /// in its payload, so the other device never has to be told separately — and a random
+    /// board is dealt once here rather than rolled independently at each end.
+    func startAutomatch(ruleSet: RuleSet, boardSetup: BoardSetup) async throws -> OnlineMatchSummary
+    func inviteFriend(ruleSet: RuleSet, boardSetup: BoardSetup) async throws -> OnlineMatchSummary
     /// Writes the resulting state and hands the turn to the opponent in one operation.
     /// `expectedPredecessor` is the move number this turn was built on; a mismatch is a
     /// conflict, not an overwrite.

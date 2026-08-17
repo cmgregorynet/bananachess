@@ -98,6 +98,16 @@ the colour of Cherry Coast's chef otter). Player two's tray also carries a secon
 inner ring, and every square has a VoiceOver label naming its owner, so the two sides
 stay apart in greyscale and for colour-blind players too.
 
+## Boards
+
+Three opening arrangements, picked on the start screen and independent of the rule set:
+
+- **Standard** — blenders on the back row, fruit in front.
+- **Blendy** — the two rows swapped.
+- **Random** — every piece scattered, with one rule: no fruit starts on its own delivery
+  row. Dealt once by whoever creates the match and carried in the state, so both devices
+  in an online match see the same board.
+
 ## Building and releasing
 
 Xcode 26.5, iOS 18 deployment target, iPhone only. `Engine/` is a local Swift package

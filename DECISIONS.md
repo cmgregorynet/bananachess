@@ -128,6 +128,44 @@ plain structs rather than `[PlayerID: …]` and `Set<PieceKind>`. Swift encodes 
 those with arbitrary ordering, which would break the byte-stable payload encoding that
 the online retry path depends on.
 
+## Board setups (schema 12)
+
+*Charles, 17 Aug 2026.* Three opening arrangements: Standard, Blendy, Random.
+
+**Orthogonal to the rule set, and stored beside it.** A board is not a rule, so
+`BoardSetup` sits alongside `RuleSet` in `GameState` rather than folding into it — any of
+the three boards can be played under either rule set, which is six combinations, all
+measured. Nothing in the rules reads `boardSetup` after setup: the arrangement is already
+in `pieces` by then. It is stored so a match can *say* what it is, to the player and in a
+payload, exactly as `ruleSet` is.
+
+**A random board is dealt once, not seeded.** `newGame` takes an optional seed for
+reproducibility in tests, but the resulting arrangement travels inside the state. An
+online opponent receives the board itself rather than a seed to re-roll, so there is no
+way for two devices to disagree about where the pieces are — and no need to version the
+shuffling algorithm.
+
+**One placement rule, and only one.** No fruit starts on its own delivery row; everything
+else is left to chance, including lopsided sides and blenders that start next to enemy
+fruit. The rule exists because a fruit dealt onto its delivery row can deliver on turn one
+for a sideways step. Measured across 200 boards.
+
+**`GameSetup.allBlenderHomes` had to go.** It was a static derived from the back row, and
+the board's spawn markers were drawn from it. With three arrangements the spawns move, so
+`GameState.allSpawnSquares` reads them off the pieces instead.
+
+**Blendy found a CPU bug that had been there all along.** Sixteen of sixteen Blendy
+matches never terminated — 4,218 buy-backs, no fruit ever touched. The board's blenders
+start with no fruit in reach, so blender combat is the only profitable move, and at
+`blenderDestroyed = -450` against a 300-unit restore cost every rebuy scored +150, making
+the trade infinitely worth repeating. Repriced to -250 by sweep: every board finishes,
+buy-backs survive as a real option, ladder holds. Full numbers in `RULES_ADDENDUM.md`.
+
+This is the third time a weight priced far from its true cost has produced an unbounded
+loop — see also spawn camping and the Blenderama beeline. The pattern is worth naming: if
+an action's reward exceeds its cost by a wide margin *and* the position it produces can
+recur, the CPU will find the cycle.
+
 ## Fruit depletion (version 5)
 
 `Banana_Chess_Updated_Rules_Addendum.docx` §5 changed how every match ends: the moment

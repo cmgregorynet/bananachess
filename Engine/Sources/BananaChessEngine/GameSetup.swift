@@ -37,29 +37,59 @@ public enum GameSetup {
         PieceID("\(player.rawValue).\(kind).\(index)")
     }
 
+    /// Builds an opening position.
+    ///
+    /// `seed` only matters to `.random`, and only for reproducibility: pass one to get
+    /// the same scattered board twice, leave it off and the board is genuinely random.
+    /// The layout is settled here and travels inside the state, so an online opponent
+    /// receives the board itself rather than a seed to re-roll.
     public static func newGame(
         startingPlayer: PlayerID = .one,
-        ruleSet: RuleSet = .standard
+        ruleSet: RuleSet = .standard,
+        boardSetup: BoardSetup = .standard,
+        seed: UInt64? = nil
     ) -> GameState {
-        var pieces: [Piece] = []
+        let pieces = switch boardSetup {
+        case .standard: rowPieces(fruitRow: \.fruitRow, blenderRow: \.backRow)
+        case .blendy: rowPieces(fruitRow: \.backRow, blenderRow: \.fruitRow)
+        case .random: randomPieces(seed: seed ?? .random(in: .min ... .max))
+        }
 
+        return GameState(
+            pieces: pieces,
+            activePlayer: startingPlayer,
+            ruleSet: ruleSet,
+            boardSetup: boardSetup
+        )
+    }
+
+    /// The two ordered arrangements. `.standard` and `.blendy` differ by nothing but
+    /// which row each kind of piece stands on, so they share this.
+    private static func rowPieces(
+        fruitRow: KeyPath<PlayerID, Int>,
+        blenderRow: KeyPath<PlayerID, Int>
+    ) -> [Piece] {
+        var pieces: [Piece] = []
         for player in PlayerID.allCases {
             for (index, kind) in fruitOrder.enumerated() {
-                let column = player.column(fromOwnLeft: index)
+                // Bananas return to `home` after a delivery under wildcard rules.
+                let square = Position(
+                    row: player[keyPath: fruitRow],
+                    column: player.column(fromOwnLeft: index)
+                )
                 pieces.append(
                     Piece(
                         id: pieceID(player: player, kind: "fruit", index: index),
                         owner: player,
                         kind: kind,
-                        position: Position(row: player.fruitRow, column: column),
-                        // Bananas return here after a delivery under wildcard rules.
-                        home: Position(row: player.fruitRow, column: column)
+                        position: square,
+                        home: square
                     )
                 )
             }
 
             for (index, column) in blenderHomeColumns.enumerated() {
-                let home = Position(row: player.backRow, column: column)
+                let home = Position(row: player[keyPath: blenderRow], column: column)
                 pieces.append(
                     Piece(
                         id: pieceID(player: player, kind: "blender", index: index),
@@ -71,14 +101,54 @@ public enum GameSetup {
                 )
             }
         }
-
-        return GameState(pieces: pieces, activePlayer: startingPlayer, ruleSet: ruleSet)
+        return pieces
     }
 
-    /// Every blender home on the board, marked on the board even once vacated.
-    public static var allBlenderHomes: [Position] {
-        PlayerID.allCases.flatMap { player in
-            blenderHomeColumns.map { Position(row: player.backRow, column: $0) }
+    /// Every piece on a square of its own, drawn from a shuffled board.
+    ///
+    /// One placement rule, and it is the one that matters: **no fruit starts on its own
+    /// delivery row.** A fruit that begins there has a free delivery available on turn
+    /// one for the price of a sideways step, which is not a random opening so much as a
+    /// random winner. Nothing else is constrained — a blender may start next to enemy
+    /// fruit, and the two sides may be lopsided. That is the mode.
+    private static func randomPieces(seed: UInt64) -> [Piece] {
+        var rng = SeededGenerator(seed: seed)
+        var pool = Board.allPositions.shuffled(using: &rng)
+
+        func take(where isAllowed: (Position) -> Bool) -> Position {
+            // Safe: 36 squares, 16 pieces, and the rule rules out only 6 of them.
+            let index = pool.firstIndex(where: isAllowed)!
+            return pool.remove(at: index)
         }
+
+        var pieces: [Piece] = []
+        for player in PlayerID.allCases {
+            for (index, kind) in fruitOrder.enumerated() {
+                let square = take { $0.row != player.deliveryRow }
+                pieces.append(
+                    Piece(
+                        id: pieceID(player: player, kind: "fruit", index: index),
+                        owner: player,
+                        kind: kind,
+                        position: square,
+                        home: square
+                    )
+                )
+            }
+
+            for index in blenderHomeColumns.indices {
+                let home = take { _ in true }
+                pieces.append(
+                    Piece(
+                        id: pieceID(player: player, kind: "blender", index: index),
+                        owner: player,
+                        kind: .blender,
+                        position: home,
+                        home: home
+                    )
+                )
+            }
+        }
+        return pieces
     }
 }

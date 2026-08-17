@@ -12,11 +12,12 @@ final class MatchSmokeUITests: XCTestCase {
     /// The rule set is stated per launch rather than left to whatever a previous test
     /// last ticked: the checkbox persists through `@AppStorage`, so relying on the
     /// stored default couples every test to the order they happen to run in.
-    private func launch(wildcards: Bool = false) -> XCUIApplication {
+    private func launch(wildcards: Bool = false, board: String = "standard") -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments += [
             "-hasSeenTeachingOverlay", "YES",
             "-wildcardRulesEnabled", wildcards ? "YES" : "NO",
+            "-boardSetup", board,
         ]
         app.launch()
         return app
@@ -278,5 +279,76 @@ final class MatchSmokeUITests: XCTestCase {
             "\(message) — turn indicator was “\(indicator.label)”, expected it to contain “\(text)”",
             file: file, line: line
         )
+    }
+
+    // MARK: - Board setups
+
+    func testBoardSetupPickerStartsOnStandardAndSwitches() {
+        // Deliberately no -boardSetup argument. An argument sits in front of the stored
+        // value for the whole session, so with one set the taps below would write a
+        // setting that could never be read back — the picker would look frozen.
+        let app = XCUIApplication()
+        app.launchArguments += ["-hasSeenTeachingOverlay", "YES"]
+        app.launch()
+
+        // Normalise first, since this is the one test that reads the persisted choice.
+        if app.buttons["Standard"].value as? String != "selected" {
+            app.buttons["Standard"].tap()
+        }
+        XCTAssertEqual(
+            app.buttons["Standard"].value as? String, "selected",
+            "Standard should be the selected board"
+        )
+        XCTAssertTrue(app.staticTexts["Blenders behind, fruit in front."].exists)
+
+        app.buttons["Blendy"].tap()
+        XCTAssertEqual(app.buttons["Blendy"].value as? String, "selected")
+        XCTAssertEqual(
+            app.buttons["Standard"].value as? String, "not selected",
+            "the choice is exclusive"
+        )
+        XCTAssertTrue(
+            app.staticTexts["Swapped: fruit behind, blenders in front."].waitForExistence(timeout: 2),
+            "the blurb has to follow the selection — 'Random' means nothing without it"
+        )
+
+        app.buttons["Random"].tap()
+        XCTAssertTrue(
+            app.staticTexts["Everything scattered. A different board every time."]
+                .waitForExistence(timeout: 2)
+        )
+
+        // Put it back, so the stored choice does not leak into tests that walk fixed
+        // board coordinates.
+        app.buttons["Standard"].tap()
+        XCTAssertEqual(app.buttons["Standard"].value as? String, "selected")
+    }
+
+    /// Blendy is Standard with the two rows swapped, which is visible on the board
+    /// itself: the blenders' spawn markers move up a row with them.
+    func testBlendyDealsFruitOnTheBackRow() {
+        let app = launch(board: "blendy")
+        app.buttons["Local Two Player. Share one phone and take turns."].tap()
+        XCTAssertTrue(square(app, 5, 0).waitForExistence(timeout: 5))
+
+        // Player one's back row is row 5, and under Blendy it holds fruit, not blenders.
+        XCTAssertTrue(
+            square(app, 5, 0).label.contains("banana"),
+            "expected fruit on the back row, got: \(square(app, 5, 0).label)"
+        )
+        XCTAssertTrue(
+            square(app, 4, 1).label.contains("blender"),
+            "expected a blender one row in, got: \(square(app, 4, 1).label)"
+        )
+    }
+
+    func testRandomBoardStillPlays() {
+        let app = launch(board: "random")
+        app.buttons["Local Two Player. Share one phone and take turns."].tap()
+
+        // Nothing is known about where the pieces are on a scattered board, so this
+        // asserts only what must hold regardless: the board is dealt and playable.
+        XCTAssertTrue(square(app, 0, 0).waitForExistence(timeout: 5), "a random board should appear")
+        XCTAssertTrue(square(app, 5, 5).exists)
     }
 }

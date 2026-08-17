@@ -7,6 +7,7 @@ struct HomeView: View {
     @AppStorage("lastCPUDifficulty") private var storedDifficulty = CPUDifficulty.medium.rawValue
     @AppStorage("lastCPUHumanPlaysFirst") private var humanPlaysFirst = true
     @AppStorage("wildcardRulesEnabled") private var wildcardRules = false
+    @AppStorage("boardSetup") private var storedBoardSetup = BoardSetup.standard.rawValue
 
     @State private var route: Route?
     @State private var isShowingRules = false
@@ -23,6 +24,10 @@ struct HomeView: View {
     }
 
     private var ruleSet: RuleSet { wildcardRules ? .wildcard : .standard }
+
+    private var boardSetup: BoardSetup {
+        BoardSetup(rawValue: storedBoardSetup) ?? .standard
+    }
 
     /// One blend in three throws pulp at the screen. `-alwaysSplatter` pins it on for
     /// development and screenshots; like Undo, it does not exist in a release build.
@@ -45,6 +50,8 @@ struct HomeView: View {
                     Spacer(minLength: 16)
                     menu
                     Spacer(minLength: 18)
+                    BoardSetupPicker(selection: $storedBoardSetup)
+                    Spacer(minLength: 10)
                     WildcardRulesToggle(isOn: $wildcardRules)
                     Spacer(minLength: 12)
                     Button("How to play") { isShowingRules = true }
@@ -59,7 +66,7 @@ struct HomeView: View {
                     MatchView(
                         viewModel: MatchViewModel(
                             mode: .localVersus,
-                            state: GameSetup.newGame(ruleSet: ruleSet),
+                            state: GameSetup.newGame(ruleSet: ruleSet, boardSetup: boardSetup),
                             blendEffects: blendEffects
                         )
                     )
@@ -67,13 +74,21 @@ struct HomeView: View {
                     MatchView(
                         viewModel: MatchViewModel(
                             mode: .computer(difficulty: difficulty, humanPlays: humanPlays),
-                            state: GameSetup.newGame(startingPlayer: .one, ruleSet: ruleSet),
+                            state: GameSetup.newGame(
+                                startingPlayer: .one,
+                                ruleSet: ruleSet,
+                                boardSetup: boardSetup
+                            ),
                             blendEffects: blendEffects
                         )
                     )
                 case .online:
                     OnlineLobbyView(
-                        viewModel: OnlineLobbyViewModel(service: onlineService, ruleSet: ruleSet)
+                        viewModel: OnlineLobbyViewModel(
+                            service: onlineService,
+                            ruleSet: ruleSet,
+                            boardSetup: boardSetup
+                        )
                     )
                 }
             }
@@ -261,4 +276,69 @@ struct CPUOptionsSheet: View {
 
 #Preview {
     HomeView()
+}
+
+
+/// Three boards, one row. A segmented control rather than a checkbox because the choice
+/// is three-way and mutually exclusive, and because the blurb under it has to change to
+/// explain whichever is selected — "Random" means nothing without a sentence.
+struct BoardSetupPicker: View {
+    @Binding var selection: String
+
+    private var setup: BoardSetup { BoardSetup(rawValue: selection) ?? .standard }
+
+    var body: some View {
+        WashiPanel(cornerRadius: 14) {
+            VStack(alignment: .leading, spacing: 8) {
+                Text("Board")
+                    .font(.system(.callout, design: .serif).weight(.semibold))
+                    .foregroundStyle(Palette.ink)
+
+                HStack(spacing: 6) {
+                    ForEach(BoardSetup.allCases) { option in
+                        Button {
+                            withAnimation(.easeOut(duration: 0.18)) { selection = option.rawValue }
+                            Haptics.selection()
+                        } label: {
+                            Text(option.displayName)
+                                .font(.system(size: 12, design: .serif).weight(.medium))
+                                .foregroundStyle(Palette.ink)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 7)
+                                .background {
+                                    let isOn = option == setup
+                                    Capsule().fill(isOn ? Palette.amber.opacity(0.28) : .clear)
+                                        .overlay {
+                                            Capsule().strokeBorder(
+                                                isOn ? Palette.amber : Palette.inkFaint,
+                                                lineWidth: isOn ? 2 : 1
+                                            )
+                                        }
+                                }
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(option.displayName)
+                        .accessibilityHint(option.blurb)
+                        .accessibilityAddTraits(
+                            option == setup ? [.isButton, .isSelected] : .isButton
+                        )
+                        // Stated as a value as well as a trait, matching the wildcard
+                        // checkbox. The trait alone does not survive the ForEach into
+                        // the accessibility tree reliably, which left the selection
+                        // unreadable to VoiceOver and untestable.
+                        .accessibilityValue(option == setup ? "selected" : "not selected")
+                    }
+                }
+
+                Text(setup.blurb)
+                    .font(.system(size: 11, design: .serif))
+                    .foregroundStyle(Palette.inkSoft)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+            .padding(14)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel("Board arrangement")
+    }
 }
