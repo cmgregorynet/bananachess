@@ -12,12 +12,17 @@ final class MatchSmokeUITests: XCTestCase {
     /// The rule set is stated per launch rather than left to whatever a previous test
     /// last ticked: the checkbox persists through `@AppStorage`, so relying on the
     /// stored default couples every test to the order they happen to run in.
-    private func launch(wildcards: Bool = false, board: String = "standard") -> XCUIApplication {
+    private func launch(
+        wildcards: Bool = false,
+        board: String = "standard",
+        edges: String = "flat"
+    ) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments += [
             "-hasSeenTeachingOverlay", "YES",
             "-wildcardRulesEnabled", wildcards ? "YES" : "NO",
             "-boardSetup", board,
+            "-boardWrap", edges,
         ]
         app.launch()
         return app
@@ -350,5 +355,84 @@ final class MatchSmokeUITests: XCTestCase {
         // asserts only what must hold regardless: the board is dealt and playable.
         XCTAssertTrue(square(app, 0, 0).waitForExistence(timeout: 5), "a random board should appear")
         XCTAssertTrue(square(app, 5, 5).exists)
+    }
+
+    // MARK: - Board edges
+
+    func testEdgePickerSwitchesAndExplainsItself() {
+        // No -boardWrap argument: an argument sits in front of the stored value, so the
+        // taps below could never be read back.
+        let app = XCUIApplication()
+        app.launchArguments += ["-hasSeenTeachingOverlay", "YES"]
+        app.launch()
+
+        if app.buttons["Walls"].value as? String != "selected" {
+            app.buttons["Walls"].tap()
+        }
+        XCTAssertTrue(app.staticTexts["Edges are walls. Pieces stop at them."].exists)
+
+        app.buttons["Sides"].tap()
+        XCTAssertEqual(app.buttons["Sides"].value as? String, "selected")
+        XCTAssertEqual(app.buttons["Walls"].value as? String, "not selected")
+        XCTAssertTrue(
+            app.staticTexts["Left and right join up. Step off one side, arrive at the other."]
+                .waitForExistence(timeout: 2)
+        )
+
+        // Restore, so the stored choice cannot leak into tests that walk the board.
+        app.buttons["Walls"].tap()
+        XCTAssertEqual(app.buttons["Walls"].value as? String, "selected")
+    }
+
+    /// Walks a fruit onto the empty middle of the left-hand file, where the square it
+    /// would wrap onto is empty. The opening row is no good for this: a fruit there wraps
+    /// onto its *own* fruit, and fruit never captures, so the move is illegal on any
+    /// edges and the test would prove nothing.
+    private func fruitOnTheLeftEdge(_ app: XCUIApplication) {
+        XCTAssertTrue(square(app, 4, 0).waitForExistence(timeout: 5))
+        square(app, 4, 0).tap()
+        square(app, 3, 0).tap()
+        Thread.sleep(forTimeInterval: 1.2)
+        square(app, 1, 0).tap()          // player two takes a turn
+        square(app, 2, 0).tap()
+        Thread.sleep(forTimeInterval: 1.2)
+    }
+
+    /// The rule itself, through the UI: a piece on the left edge can move to the right
+    /// edge of the same row.
+    func testAPieceWalksOffOneSideAndArrivesOnTheOther() {
+        let app = launch(edges: "sides")
+        app.buttons["Local Two Player. Share one phone and take turns."].tap()
+        fruitOnTheLeftEdge(app)
+
+        square(app, 3, 0).tap()
+        XCTAssertTrue(
+            square(app, 3, 5).label.contains("legal move"),
+            "the far column should be reachable: \(square(app, 3, 5).label)"
+        )
+
+        square(app, 3, 5).tap()
+        Thread.sleep(forTimeInterval: 1.2)
+        XCTAssertTrue(
+            square(app, 3, 5).label.contains("banana"),
+            "the fruit should have arrived on the far side: \(square(app, 3, 5).label)"
+        )
+        XCTAssertFalse(
+            square(app, 3, 0).label.contains("banana"),
+            "and left the near side: \(square(app, 3, 0).label)"
+        )
+    }
+
+    /// The same position with walls, which is what makes the test above mean something.
+    func testWallsKeepThePieceOnItsOwnSide() {
+        let app = launch(edges: "flat")
+        app.buttons["Local Two Player. Share one phone and take turns."].tap()
+        fruitOnTheLeftEdge(app)
+
+        square(app, 3, 0).tap()
+        XCTAssertFalse(
+            square(app, 3, 5).label.contains("legal move"),
+            "with walls the far column must not be reachable: \(square(app, 3, 5).label)"
+        )
     }
 }

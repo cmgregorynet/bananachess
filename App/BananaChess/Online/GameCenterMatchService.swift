@@ -16,6 +16,7 @@ final class GameCenterMatchService: NSObject, OnlineMatchService {
     /// has moved in yet. The authoritative rule set is whatever the first player writes.
     private var pendingRuleSet: RuleSet = .standard
     private var pendingBoardSetup: BoardSetup = .standard
+    private var pendingBoardWrap: BoardWrap = .flat
 
     nonisolated func matchUpdates() -> AsyncStream<OnlineMatchUpdate> {
         let broadcaster = broadcaster
@@ -76,10 +77,15 @@ final class GameCenterMatchService: NSObject, OnlineMatchService {
         return summary(for: try await GKTurnBasedMatch.load(withID: id))
     }
 
-    func startAutomatch(ruleSet: RuleSet, boardSetup: BoardSetup) async throws -> OnlineMatchSummary {
+    func startAutomatch(
+        ruleSet: RuleSet,
+        boardSetup: BoardSetup,
+        boardWrap: BoardWrap
+    ) async throws -> OnlineMatchSummary {
         try requireAuthentication()
         pendingRuleSet = ruleSet
         pendingBoardSetup = boardSetup
+        pendingBoardWrap = boardWrap
         let match = try await GKTurnBasedMatch.find(for: Self.matchRequest())
         return summary(for: match)
     }
@@ -87,10 +93,15 @@ final class GameCenterMatchService: NSObject, OnlineMatchService {
     /// Presents Game Center's own matchmaker so the player can pick a friend. Current
     /// GameKit does not hand the match back through the delegate — it arrives as a turn
     /// event — so the listener below completes this call.
-    func inviteFriend(ruleSet: RuleSet, boardSetup: BoardSetup) async throws -> OnlineMatchSummary {
+    func inviteFriend(
+        ruleSet: RuleSet,
+        boardSetup: BoardSetup,
+        boardWrap: BoardWrap
+    ) async throws -> OnlineMatchSummary {
         try requireAuthentication()
         pendingRuleSet = ruleSet
         pendingBoardSetup = boardSetup
+        pendingBoardWrap = boardWrap
         let viewController = GKTurnBasedMatchmakerViewController(matchRequest: Self.matchRequest())
         viewController.turnBasedMatchmakerDelegate = self
         viewController.showExistingMatches = true
@@ -237,7 +248,8 @@ final class GameCenterMatchService: NSObject, OnlineMatchService {
                 MatchPayload.newMatch(
                     id: match.matchID,
                     ruleSet: pendingRuleSet,
-                    boardSetup: pendingBoardSetup
+                    boardSetup: pendingBoardSetup,
+                    boardWrap: pendingBoardWrap
                 )
             }
 

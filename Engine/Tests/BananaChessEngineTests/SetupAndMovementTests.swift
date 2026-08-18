@@ -316,3 +316,145 @@ struct BoardSetupTests {
         #expect(decoded.state.pieces == payload.state.pieces)
     }
 }
+
+@Suite("Board edges")
+struct BoardWrapTests {
+    /// A lone fruit in a corner, so the edges are the only thing limiting it.
+    private func corner(_ wrap: BoardWrap, at square: Position) -> (state: GameState, fruit: PieceID) {
+        var builder = BoardBuilder()
+        let fruit = builder.fruit(.strawberry, .one, at: square)
+        _ = builder.fruit(.banana, .two, at: position(3, 3))
+        var state = builder.state()
+        state.boardWrap = wrap
+        return (state, fruit)
+    }
+
+    @Test("With walls, a piece on the left edge cannot go further left")
+    func wallsStopAPiece() {
+        let f = corner(.flat, at: position(2, 0))
+        let destinations = Set(RulesEngine.legalMoves(for: f.fruit, in: f.state).map(\.destination))
+
+        #expect(!destinations.contains(position(2, 5)))
+        #expect(destinations == [position(1, 0), position(3, 0), position(2, 1)])
+    }
+
+    @Test("With sides joined, stepping off the left edge arrives on the right")
+    func sidesWrapAround() {
+        let f = corner(.sides, at: position(2, 0))
+        let destinations = Set(RulesEngine.legalMoves(for: f.fruit, in: f.state).map(\.destination))
+
+        #expect(destinations.contains(position(2, 5)), "the same row, the far column")
+        #expect(destinations.count == 4, "a piece on the edge is no longer short of a move")
+    }
+
+    @Test("Sides join, rows do not — the run home is unchanged")
+    func sidesLeaveRowsAlone() {
+        let f = corner(.sides, at: position(0, 2))
+        let destinations = Set(RulesEngine.legalMoves(for: f.fruit, in: f.state).map(\.destination))
+
+        #expect(!destinations.contains(position(5, 2)), "top and bottom are still walls")
+        #expect(destinations == [position(1, 2), position(0, 1), position(0, 3)])
+    }
+
+    @Test("With every edge joined, rows wrap too")
+    func allWrapsBothWays() {
+        let f = corner(.all, at: position(0, 0))
+        let destinations = Set(RulesEngine.legalMoves(for: f.fruit, in: f.state).map(\.destination))
+
+        #expect(destinations == [position(5, 0), position(1, 0), position(0, 5), position(0, 1)])
+    }
+
+    @Test("Every piece has a move in every direction once all edges join")
+    func allEdgesJoinedMeansNoPieceIsEverCornered() {
+        var state = GameSetup.newGame(boardWrap: .all)
+        state.boardWrap = .all
+        for piece in state.pieces where piece.isOnBoard {
+            // Four directions each, minus whatever is blocked by another piece — the
+            // point is that the *edge* never removes one.
+            let steps = RulesEngine.legalMoves(for: piece.id, in: state).count
+            let blocked = piece.isBlender ? 0 : Direction.orthogonal.compactMap { step -> Position? in
+                Board.step(from: piece.position!, row: step.row, column: step.column, wrap: .all)
+            }.filter { state.piece(at: $0) != nil }.count
+            #expect(steps + blocked == 4, "\(piece.id) had \(steps) moves and \(blocked) blocked")
+        }
+    }
+
+    /// The invariant the whole buy-back rule leans on: a blender never changes square
+    /// colour, so a player's two blenders between them cover the board. A 6×6 board is
+    /// even in both directions, so wrapping shifts by an even number and the parity
+    /// survives — worth pinning, because on an odd board it would not.
+    @Test("A wrapping blender still never changes square colour", arguments: BoardWrap.allCases)
+    func wrappingPreservesSquareColour(wrap: BoardWrap) {
+        for origin in Board.allPositions {
+            for step in Direction.diagonal {
+                guard let destination = Board.step(
+                    from: origin, row: step.row, column: step.column, wrap: wrap
+                ) else { continue }
+                #expect(
+                    destination.isDarkSquare == origin.isDarkSquare,
+                    "\(origin) → \(destination) changed colour under \(wrap)"
+                )
+            }
+        }
+    }
+
+    @Test("A blender can wrap onto a fruit and blend it")
+    func aWrappingBlenderStillBlends() throws {
+        var builder = BoardBuilder()
+        let blender = builder.blender(.one, at: position(2, 0), home: position(5, 1))
+        _ = builder.fruit(.pineapple, .two, at: position(1, 5))
+        _ = builder.fruit(.banana, .one, at: position(4, 4))
+        var state = builder.state()
+        state.boardWrap = .sides
+
+        let result = try RulesEngine.apply(state.move(blender, to: position(1, 5)), to: state)
+
+        #expect(result.state.scores.one == 3)
+        #expect(result.state.square(of: blender) == position(1, 5))
+    }
+
+    /// Worth stating out loud: with every edge joined, the delivery row is reachable
+    /// *backwards*. A fruit on its own back row is one step from the far edge.
+    @Test("With all edges joined, a fruit can deliver by going backwards")
+    func allEdgesMakesTheBackRowAdjacentToTheGoal() throws {
+        var builder = BoardBuilder()
+        // Player one's back row is 5; their delivery row is 0. Those are now adjacent.
+        let fruit = builder.fruit(.banana, .one, at: position(5, 2))
+        _ = builder.fruit(.banana, .two, at: position(3, 3))
+        var state = builder.state()
+        state.boardWrap = .all
+
+        let result = try RulesEngine.apply(state.move(fruit, to: position(0, 2)), to: state)
+
+        #expect(result.state.scores.one == PieceKind.banana.deliveryValue)
+        #expect(result.state.piece(with: fruit) == nil, "delivered, not merely moved")
+    }
+
+    @Test("The edges survive a round trip through a payload")
+    func wrapSurvivesEncoding() throws {
+        let payload = MatchPayload.newMatch(id: "m", boardSetup: .random, boardWrap: .all)
+        let decoded = try MatchCodec.decode(try MatchCodec.encode(payload))
+
+        #expect(decoded.state.boardWrap == .all)
+        #expect(decoded.state.boardSetup == .random)
+    }
+
+    @Test("Matches on joined edges still play out", .timeLimit(.minutes(3)), arguments: BoardWrap.allCases)
+    func wrappedMatchesTerminate(wrap: BoardWrap) {
+        for seed in UInt64(1)...6 {
+            var state = GameSetup.newGame(ruleSet: .wildcard, boardWrap: wrap, seed: seed)
+            let one = CPUPlayer(difficulty: .easy, seed: seed)
+            let two = CPUPlayer(difficulty: .easy, seed: seed &* 7 &+ 3)
+            while !state.status.isOver, state.turnNumber < 800 {
+                let cpu = state.activePlayer == .one ? one : two
+                guard let action = cpu.selectAction(in: state),
+                      let result = try? RulesEngine.apply(action, to: state) else { break }
+                state = result.state
+                let squares = state.pieces.compactMap(\.position)
+                #expect(Set(squares).count == squares.count, "pieces overlapped under \(wrap)")
+                #expect(squares.allSatisfy { Board.contains($0) }, "a piece left the board under \(wrap)")
+            }
+            #expect(state.status.isOver, "\(wrap) seed \(seed) never finished")
+        }
+    }
+}

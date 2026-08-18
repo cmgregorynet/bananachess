@@ -18,15 +18,18 @@ final class OnlineLobbyViewModel {
 
     let ruleSet: RuleSet
     let boardSetup: BoardSetup
+    let boardWrap: BoardWrap
 
     init(
         service: any OnlineMatchService,
         ruleSet: RuleSet = .standard,
-        boardSetup: BoardSetup = .standard
+        boardSetup: BoardSetup = .standard,
+        boardWrap: BoardWrap = .flat
     ) {
         self.service = service
         self.ruleSet = ruleSet
         self.boardSetup = boardSetup
+        self.boardWrap = boardWrap
     }
 
     deinit {
@@ -90,17 +93,25 @@ final class OnlineLobbyViewModel {
 
     /// Both entry points return a match to open; failure leaves the lobby untouched.
     func startAutomatch(then open: @escaping (OnlineMatchSummary) -> Void) {
-        let (ruleSet, boardSetup) = (ruleSet, boardSetup)
+        let (ruleSet, boardSetup, boardWrap) = (ruleSet, boardSetup, boardWrap)
         run(
-            { try await self.service.startAutomatch(ruleSet: ruleSet, boardSetup: boardSetup) },
+            {
+                try await self.service.startAutomatch(
+                    ruleSet: ruleSet, boardSetup: boardSetup, boardWrap: boardWrap
+                )
+            },
             then: open
         )
     }
 
     func inviteFriend(then open: @escaping (OnlineMatchSummary) -> Void) {
-        let (ruleSet, boardSetup) = (ruleSet, boardSetup)
+        let (ruleSet, boardSetup, boardWrap) = (ruleSet, boardSetup, boardWrap)
         run(
-            { try await self.service.inviteFriend(ruleSet: ruleSet, boardSetup: boardSetup) },
+            {
+                try await self.service.inviteFriend(
+                    ruleSet: ruleSet, boardSetup: boardSetup, boardWrap: boardWrap
+                )
+            },
             then: open
         )
     }

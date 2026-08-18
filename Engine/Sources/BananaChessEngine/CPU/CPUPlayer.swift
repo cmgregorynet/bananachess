@@ -295,8 +295,9 @@ private struct Search {
             if move.destination.row == piece.owner.deliveryRow {
                 return 1_000 + piece.kind.deliveryValue * 10
             }
-            let before = abs(move.origin.row - piece.owner.deliveryRow)
-            let after = abs(move.destination.row - piece.owner.deliveryRow)
+            let joined = state.boardWrap.wrapsRows
+            let before = Board.separation(move.origin.row, piece.owner.deliveryRow, joined: joined)
+            let after = Board.separation(move.destination.row, piece.owner.deliveryRow, joined: joined)
             return (before - after) * piece.kind.baseValue * 4
         }
 

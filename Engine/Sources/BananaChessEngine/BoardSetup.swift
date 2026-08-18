@@ -31,3 +31,13 @@ public enum BoardSetup: String, Codable, Hashable, Sendable, CaseIterable, Ident
         }
     }
 }
+
+/// Shared by the two board dimensions so the start screen can offer both through one
+/// control rather than two near-identical ones.
+public protocol BoardOption: CaseIterable, Identifiable, RawRepresentable where RawValue == String {
+    var displayName: String { get }
+    var blurb: String { get }
+}
+
+extension BoardSetup: BoardOption {}
+extension BoardWrap: BoardOption {}

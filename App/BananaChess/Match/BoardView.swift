@@ -51,6 +51,43 @@ struct BoardView: View {
             .fill(Palette.squareLight)
             .frame(width: side, height: side)
             .paperGrain(opacity: 0.4)
+            .overlay { joinedEdges(side: side) }
+    }
+
+    /// Marks the edges that join up.
+    ///
+    /// Without this a legal-move dot appears on the far side of the board with nothing
+    /// to explain it. A wall is drawn solid; a joined edge is drawn as a soft dashed
+    /// seam, the visual convention for "this continues elsewhere".
+    @ViewBuilder
+    private func joinedEdges(side: CGFloat) -> some View {
+        let wrap = viewModel.displayState.boardWrap
+        if wrap != .flat {
+            let dash = StrokeStyle(lineWidth: 2.4, lineCap: .round, dash: [5, 5])
+            ZStack {
+                if wrap.wrapsColumns {
+                    seam(dash: dash, vertical: true, side: side, leading: true)
+                    seam(dash: dash, vertical: true, side: side, leading: false)
+                }
+                if wrap.wrapsRows {
+                    seam(dash: dash, vertical: false, side: side, leading: true)
+                    seam(dash: dash, vertical: false, side: side, leading: false)
+                }
+            }
+            .foregroundStyle(Palette.amber.opacity(0.55))
+            .allowsHitTesting(false)
+            .accessibilityHidden(true)
+        }
+    }
+
+    private func seam(dash: StrokeStyle, vertical: Bool, side: CGFloat, leading: Bool) -> some View {
+        Path { path in
+            let offset: CGFloat = leading ? 1.2 : side - 1.2
+            path.move(to: vertical ? CGPoint(x: offset, y: 0) : CGPoint(x: 0, y: offset))
+            path.addLine(to: vertical ? CGPoint(x: offset, y: side) : CGPoint(x: side, y: offset))
+        }
+        .stroke(style: dash)
+        .frame(width: side, height: side)
     }
 
     // MARK: - Squares

@@ -108,6 +108,19 @@ Three opening arrangements, picked on the start screen and independent of the ru
   row. Dealt once by whoever creates the match and carried in the state, so both devices
   in an online match see the same board.
 
+## Edges
+
+Independently of the arrangement, the board's edges can be walls or can join up:
+
+- **Walls** — the original board.
+- **Sides** — left and right join; step off one side, arrive on the other.
+- **All** — every edge joins, so the board is a loop both ways. This changes the game the
+  most: a fruit's own back row is then one step from its delivery row, and matches run
+  about a third as long.
+
+Joined edges are drawn as a dashed amber seam, so a legal-move dot on the far side of the
+board has something explaining it.
+
 ## Building and releasing
 
 Xcode 26.5, iOS 18 deployment target, iPhone only. `Engine/` is a local Swift package

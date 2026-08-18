@@ -623,7 +623,8 @@ final class MatchViewModel {
         // same one again: the point of the mode is a board you have not seen.
         let fresh = GameSetup.newGame(
             ruleSet: authoritativeState.ruleSet,
-            boardSetup: authoritativeState.boardSetup
+            boardSetup: authoritativeState.boardSetup,
+            boardWrap: authoritativeState.boardWrap
         )
         undoStack.removeAll()
         authoritativeState = fresh

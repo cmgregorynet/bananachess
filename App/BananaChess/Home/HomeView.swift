@@ -8,6 +8,7 @@ struct HomeView: View {
     @AppStorage("lastCPUHumanPlaysFirst") private var humanPlaysFirst = true
     @AppStorage("wildcardRulesEnabled") private var wildcardRules = false
     @AppStorage("boardSetup") private var storedBoardSetup = BoardSetup.standard.rawValue
+    @AppStorage("boardWrap") private var storedBoardWrap = BoardWrap.flat.rawValue
 
     @State private var route: Route?
     @State private var isShowingRules = false
@@ -27,6 +28,10 @@ struct HomeView: View {
 
     private var boardSetup: BoardSetup {
         BoardSetup(rawValue: storedBoardSetup) ?? .standard
+    }
+
+    private var boardWrap: BoardWrap {
+        BoardWrap(rawValue: storedBoardWrap) ?? .flat
     }
 
     /// One blend in three throws pulp at the screen. `-alwaysSplatter` pins it on for
@@ -50,7 +55,7 @@ struct HomeView: View {
                     Spacer(minLength: 16)
                     menu
                     Spacer(minLength: 18)
-                    BoardSetupPicker(selection: $storedBoardSetup)
+                    BoardOptionsPanel(setup: $storedBoardSetup, wrap: $storedBoardWrap)
                     Spacer(minLength: 10)
                     WildcardRulesToggle(isOn: $wildcardRules)
                     Spacer(minLength: 12)
@@ -66,7 +71,11 @@ struct HomeView: View {
                     MatchView(
                         viewModel: MatchViewModel(
                             mode: .localVersus,
-                            state: GameSetup.newGame(ruleSet: ruleSet, boardSetup: boardSetup),
+                            state: GameSetup.newGame(
+                                ruleSet: ruleSet,
+                                boardSetup: boardSetup,
+                                boardWrap: boardWrap
+                            ),
                             blendEffects: blendEffects
                         )
                     )
@@ -77,7 +86,8 @@ struct HomeView: View {
                             state: GameSetup.newGame(
                                 startingPlayer: .one,
                                 ruleSet: ruleSet,
-                                boardSetup: boardSetup
+                                boardSetup: boardSetup,
+                                boardWrap: boardWrap
                             ),
                             blendEffects: blendEffects
                         )
@@ -87,7 +97,8 @@ struct HomeView: View {
                         viewModel: OnlineLobbyViewModel(
                             service: onlineService,
                             ruleSet: ruleSet,
-                            boardSetup: boardSetup
+                            boardSetup: boardSetup,
+                            boardWrap: boardWrap
                         )
                     )
                 }
@@ -279,66 +290,81 @@ struct CPUOptionsSheet: View {
 }
 
 
-/// Three boards, one row. A segmented control rather than a checkbox because the choice
-/// is three-way and mutually exclusive, and because the blurb under it has to change to
-/// explain whichever is selected — "Random" means nothing without a sentence.
-struct BoardSetupPicker: View {
-    @Binding var selection: String
-
-    private var setup: BoardSetup { BoardSetup(rawValue: selection) ?? .standard }
+/// The two board dimensions in one panel. Kept together because they are one decision
+/// in the player's head — "what board am I playing on" — and because two full-width
+/// panels stacked would push the start screen off a small phone.
+struct BoardOptionsPanel: View {
+    @Binding var setup: String
+    @Binding var wrap: String
 
     var body: some View {
         WashiPanel(cornerRadius: 14) {
-            VStack(alignment: .leading, spacing: 8) {
-                Text("Board")
-                    .font(.system(.callout, design: .serif).weight(.semibold))
-                    .foregroundStyle(Palette.ink)
-
-                HStack(spacing: 6) {
-                    ForEach(BoardSetup.allCases) { option in
-                        Button {
-                            withAnimation(.easeOut(duration: 0.18)) { selection = option.rawValue }
-                            Haptics.selection()
-                        } label: {
-                            Text(option.displayName)
-                                .font(.system(size: 12, design: .serif).weight(.medium))
-                                .foregroundStyle(Palette.ink)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 7)
-                                .background {
-                                    let isOn = option == setup
-                                    Capsule().fill(isOn ? Palette.amber.opacity(0.28) : .clear)
-                                        .overlay {
-                                            Capsule().strokeBorder(
-                                                isOn ? Palette.amber : Palette.inkFaint,
-                                                lineWidth: isOn ? 2 : 1
-                                            )
-                                        }
-                                }
-                        }
-                        .buttonStyle(.plain)
-                        .accessibilityLabel(option.displayName)
-                        .accessibilityHint(option.blurb)
-                        .accessibilityAddTraits(
-                            option == setup ? [.isButton, .isSelected] : .isButton
-                        )
-                        // Stated as a value as well as a trait, matching the wildcard
-                        // checkbox. The trait alone does not survive the ForEach into
-                        // the accessibility tree reliably, which left the selection
-                        // unreadable to VoiceOver and untestable.
-                        .accessibilityValue(option == setup ? "selected" : "not selected")
-                    }
-                }
-
-                Text(setup.blurb)
-                    .font(.system(size: 11, design: .serif))
-                    .foregroundStyle(Palette.inkSoft)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
+            VStack(alignment: .leading, spacing: 10) {
+                BoardOptionRow<BoardSetup>(title: "Board", selection: $setup)
+                BoardOptionRow<BoardWrap>(title: "Edges", selection: $wrap)
             }
             .padding(14)
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Board arrangement")
+        .accessibilityLabel("Board options")
+    }
+}
+
+/// A segmented choice with a blurb that follows the selection. Generic over the two
+/// board dimensions rather than written twice: "Random" and "All" both mean nothing
+/// without a sentence under them, and that sentence has to change with the tap.
+struct BoardOptionRow<Option: BoardOption>: View where Option.AllCases: RandomAccessCollection {
+    let title: String
+    @Binding var selection: String
+
+    private var current: Option {
+        Option(rawValue: selection) ?? Option.allCases.first!
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text(title)
+                .font(.system(.callout, design: .serif).weight(.semibold))
+                .foregroundStyle(Palette.ink)
+
+            HStack(spacing: 6) {
+                ForEach(Option.allCases) { option in
+                    let isOn = option.rawValue == current.rawValue
+                    Button {
+                        withAnimation(.easeOut(duration: 0.18)) { selection = option.rawValue }
+                        Haptics.selection()
+                    } label: {
+                        Text(option.displayName)
+                            .font(.system(size: 12, design: .serif).weight(.medium))
+                            .foregroundStyle(Palette.ink)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 7)
+                            .background {
+                                Capsule().fill(isOn ? Palette.amber.opacity(0.28) : .clear)
+                                    .overlay {
+                                        Capsule().strokeBorder(
+                                            isOn ? Palette.amber : Palette.inkFaint,
+                                            lineWidth: isOn ? 2 : 1
+                                        )
+                                    }
+                            }
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(option.displayName)
+                    .accessibilityHint(option.blurb)
+                    .accessibilityAddTraits(isOn ? [.isButton, .isSelected] : .isButton)
+                    // Stated as a value as well as a trait: the trait alone does not
+                    // survive the ForEach into the accessibility tree, which left the
+                    // selection unreadable to VoiceOver and untestable.
+                    .accessibilityValue(isOn ? "selected" : "not selected")
+                }
+            }
+
+            Text(current.blurb)
+                .font(.system(size: 11, design: .serif))
+                .foregroundStyle(Palette.inkSoft)
+                .multilineTextAlignment(.leading)
+                .fixedSize(horizontal: false, vertical: true)
+        }
     }
 }

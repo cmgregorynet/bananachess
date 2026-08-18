@@ -36,12 +36,18 @@ public actor InMemoryMatchStore {
         host: OnlineLocalPlayer,
         guest: OnlineLocalPlayer,
         ruleSet: RuleSet,
-        boardSetup: BoardSetup
+        boardSetup: BoardSetup,
+        boardWrap: BoardWrap
     ) -> String {
         let id = "match-\(nextMatchNumber)"
         nextMatchNumber += 1
         records[id] = Record(
-            payload: .newMatch(id: id, ruleSet: ruleSet, boardSetup: boardSetup),
+            payload: .newMatch(
+                id: id,
+                ruleSet: ruleSet,
+                boardSetup: boardSetup,
+                boardWrap: boardWrap
+            ),
             participants: [host, guest],
             status: .yourTurn,
             outcome: nil,
@@ -133,22 +139,25 @@ public struct InMemoryMatchService: OnlineMatchService {
 
     public func startAutomatch(
         ruleSet: RuleSet = .standard,
-        boardSetup: BoardSetup = .standard
+        boardSetup: BoardSetup = .standard,
+        boardWrap: BoardWrap = .flat
     ) async throws -> OnlineMatchSummary {
         let id = await store.createMatch(
             host: localPlayer,
             guest: opponent,
             ruleSet: ruleSet,
-            boardSetup: boardSetup
+            boardSetup: boardSetup,
+            boardWrap: boardWrap
         )
         return try await loadMatch(id: id)
     }
 
     public func inviteFriend(
         ruleSet: RuleSet = .standard,
-        boardSetup: BoardSetup = .standard
+        boardSetup: BoardSetup = .standard,
+        boardWrap: BoardWrap = .flat
     ) async throws -> OnlineMatchSummary {
-        try await startAutomatch(ruleSet: ruleSet, boardSetup: boardSetup)
+        try await startAutomatch(ruleSet: ruleSet, boardSetup: boardSetup, boardWrap: boardWrap)
     }
 
     public func submit(_ payload: MatchPayload, expectedPredecessor: Int, for matchID: String) async throws {

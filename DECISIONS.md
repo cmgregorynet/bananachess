@@ -166,6 +166,35 @@ loop — see also spawn camping and the Blenderama beeline. The pattern is worth
 an action's reward exceeds its cost by a wide margin *and* the position it produces can
 recur, the CPU will find the cycle.
 
+## Board edges (schema 13)
+
+*Charles, 18 Aug 2026.* Left/right wrapping and all-direction wrapping.
+
+**A third dimension, not two more board setups.** Wrapping is a movement rule, not an
+arrangement, so `BoardWrap` sits beside `BoardSetup` rather than extending it. That keeps
+all nine combinations available — Random on a torus is a different game from Standard on
+one — and it keeps the enum honest: `BoardSetup` is still never read after setup, while
+`BoardWrap` is read on every turn.
+
+**Three states, not two toggles.** The brief asked for two toggles, but "all directions"
+contains "left/right", so as checkboxes they would have had an unreachable combination and
+an ambiguous one. A three-way choice says the same thing without a contradictory state.
+
+**One function owns the geometry.** `Board.step(from:row:column:wrap:)` is the only place
+an edge is interpreted, and the rules engine, the CPU's mobility term, its threat map and
+its distance heuristics all call it. Before this there were four separate
+`offset` + `Board.contains` pairs, which is four places to get an edge wrong.
+
+**The square-colour invariant survives on a 6x6 board.** A blender never changing colour
+is what the buy-back and board-coverage reasoning depends on. Wrapping shifts a coordinate
+by six, which is even, so parity holds — on an odd-sided board it would break. Pinned by a
+test across every square and every wrap rather than left as a comment.
+
+**The CPU's distances had to learn the short way round.** Four separate terms measured
+distance with `abs()`: advancement, Banana Split proximity, blender approach and the
+move-ordering heuristic. On joined edges all four overstate distance, which would have had
+the CPU marching fruit the long way round its own board.
+
 ## Fruit depletion (version 5)
 
 `Banana_Chess_Updated_Rules_Addendum.docx` §5 changed how every match ends: the moment

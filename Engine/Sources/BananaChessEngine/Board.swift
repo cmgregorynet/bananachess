@@ -50,3 +50,43 @@ enum Direction {
         (-1, -1), (-1, 1), (1, -1), (1, 1),
     ]
 }
+
+extension Board {
+    /// One step from `origin`, with the board's edges applied. Returns nil when the step
+    /// leaves the board and that edge is a wall.
+    ///
+    /// Every legal-move calculation in the engine and the CPU goes through here, so the
+    /// edges can never be right in one place and wrong in another.
+    public static func step(
+        from origin: Position,
+        row rowDelta: Int,
+        column columnDelta: Int,
+        wrap: BoardWrap
+    ) -> Position? {
+        var row = origin.row + rowDelta
+        var column = origin.column + columnDelta
+        if wrap.wrapsRows { row = wrapped(row) }
+        if wrap.wrapsColumns { column = wrapped(column) }
+        let destination = Position(row: row, column: column)
+        return contains(destination) ? destination : nil
+    }
+
+    /// Distance along one axis, the short way round when that axis joins up.
+    public static func separation(_ a: Int, _ b: Int, joined: Bool) -> Int {
+        let direct = abs(a - b)
+        return joined ? min(direct, size - direct) : direct
+    }
+
+    /// How many blender moves separate two squares — Chebyshev, because a blender covers
+    /// a row and a column at once, and short-way-round on any axis that joins.
+    public static func blenderSteps(from: Position, to: Position, wrap: BoardWrap) -> Int {
+        max(
+            separation(from.row, to.row, joined: wrap.wrapsRows),
+            separation(from.column, to.column, joined: wrap.wrapsColumns)
+        )
+    }
+
+    private static func wrapped(_ value: Int) -> Int {
+        ((value % size) + size) % size
+    }
+}

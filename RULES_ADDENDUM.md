@@ -2,7 +2,7 @@
 
 Corrections and additions on top of the original handoffs. This supersedes every `.docx`
 in this directory where they disagree, and records the questions they left open.
-**Rules version 13.**
+**Rules version 13.** Payload schema 13.
 
 The `.docx` files are left as the original handoffs; nothing in them has been edited.
 This file is the correction of record.
@@ -132,6 +132,77 @@ Two things to note in that table, neither of them fixed:
 2. **Random is the fairest board of the three.** First mover wins 55–59% of decided
    matches on a scattered board against 72–80% on the ordered ones. A lopsided random
    deal turns out to matter less than moving first does.
+
+### Board edges — Walls, Sides, All
+
+A second board dimension, chosen alongside the arrangement and independent of it. Unlike
+`BoardSetup`, this one is read by the rules on every turn: it decides which moves exist.
+
+- **Walls.** Edges stop a piece. The original board.
+- **Sides.** Left and right join. Step off one side and arrive on the other, same row.
+- **All.** Every edge joins, rows as well as columns. The board is a loop both ways.
+
+Every legal-move calculation in the engine and the CPU goes through one function,
+`Board.step(from:row:column:wrap:)`, so the edges cannot be right in one place and wrong
+in another. The CPU's distance terms use the short way round on any axis that joins.
+
+**The square-colour invariant survives, and that is not luck.** A blender never changes
+square colour, which is what lets a player's two blenders between them cover the board and
+what the whole buy-back rule leans on. A wrap shifts a coordinate by six, which is even,
+so the parity holds. On an odd-sided board it would not. Pinned by a test over every
+square and every wrap.
+
+**With all edges joined, the back row is one step from the delivery row.** A fruit can
+score by walking *backwards* off its own edge. That is the mechanic working as asked
+rather than a hole in it, but it is the single biggest consequence: median match length
+drops from 78 turns to 27.
+
+**Measured, 30 Medium self-play matches per combination, standard arrangement:**
+
+| Edges | Rules | Outcome | Stalls | Median turns | First mover wins |
+|---|---|---|---|---|---|
+| Walls | standard | 29 score, 1 draw | 0 | 78 | 72% |
+| Walls | wildcard | 18 score, 7 Split | 5 | 86 | 80% |
+| Sides | standard | 30 score | 0 | 61 | 56% |
+| Sides | wildcard | **30 draws** | 0 | 45 | — |
+| All | standard | 30 score | 0 | 27 | 30% |
+| All | wildcard | 21 score, 9 Split | 0 | 33 | 40% |
+
+And across every arrangement, standard rules, 12 matches each — nothing stalls anywhere:
+
+| Board | Walls | Sides | All |
+|---|---|---|---|
+| Standard | 0 stalls, median 78 | 0, 61 | 0, 34 |
+| Blendy | 0 stalls, median 66 | 0, 64 | 0, 38 |
+| Random | 0 stalls, median 34 | 0, 35 | 0, 27 |
+
+Joining any edge **removes the wildcard stalls entirely** — the extra mobility means the
+positions that used to shuffle forever now resolve.
+
+**Why Sides plus wildcard draws every time, and why it is not the mode's fault.** The
+opening fruit order is `banana, strawberry, banana, pineapple, strawberry, pineapple`,
+read from each player's own left. That makes player two's row the reverse of player one's:
+
+```
+player one: ba st ba pi st pi
+player two: pi st pi ba st ba
+```
+
+Those are the same sequence rotated by three — exactly half the board's width. On a
+walled board that is only a mirror. **Once the columns join, it becomes a true symmetry of
+the board**: the two openings are the same position, so two equally strong deterministic
+players mirror each other into a 16-16 draw on turn 45, identically at every seed.
+
+It takes perfect symmetry on both sides to do it. Introduce any asymmetry and it vanishes:
+Easy against Easy, whose tie-breaks are random, decided 20 of 20; Medium against Easy
+decided 20 of 20. A human breaks it on the first move. So this is a CPU-versus-CPU
+artefact, not a broken mode — but it is worth knowing before anyone watches two Mediums
+play on joined sides.
+
+Closing it properly would mean an opening order that is **not its own half-board
+rotation**, and that would change the Standard opening for every mode, so it has not been
+done. It is the same lesson as the mirror-symmetric opening recorded in section 0: keep the
+asymmetry, and now also keep it asymmetric *under rotation*.
 
 ### Blenderama (wildcard) — now a shutout
 

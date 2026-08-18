@@ -228,7 +228,11 @@ enum Evaluation {
         guard !bananas.isEmpty else { return nil }
 
         let nearest = bananas
-            .map { $0.position.map { abs($0.row - player.deliveryRow) } ?? Board.size - 1 }
+            .map { banana in
+                banana.position.map {
+                    Board.separation($0.row, player.deliveryRow, joined: state.boardWrap.wrapsRows)
+                } ?? Board.size - 1
+            }
             .min() ?? Board.size - 1
         return (remaining - 1) * (Board.size - 1) + nearest
     }
@@ -244,7 +248,7 @@ enum Evaluation {
         guard !blenders.isEmpty, !squares.isEmpty else { return nil }
         return blenders
             .flatMap { from in
-                squares.map { max(abs(from.row - $0.row), abs(from.column - $0.column)) }
+                squares.map { Board.blenderSteps(from: from, to: $0, wrap: state.boardWrap) }
             }
             .min()
     }
@@ -266,7 +270,9 @@ enum Evaluation {
             total += fruit.kind.baseValue * weights.fruitOnBoard
             guard let square = fruit.position else { continue }
 
-            let distance = abs(square.row - player.deliveryRow)
+            let distance = Board.separation(
+                square.row, player.deliveryRow, joined: state.boardWrap.wrapsRows
+            )
             let progress = (Board.size - 1) - distance
             total += progress * fruit.kind.baseValue * weights.advancement
 
@@ -294,8 +300,9 @@ enum Evaluation {
 
             var mobility = 0
             for step in Direction.diagonal {
-                let square = position.offset(row: step.row, column: step.column)
-                guard Board.contains(square) else { continue }
+                guard let square = Board.step(
+                    from: position, row: step.row, column: step.column, wrap: state.boardWrap
+                ) else { continue }
                 guard let occupantID = occupancy[square], let occupant = state.piece(with: occupantID) else {
                     mobility += 1
                     continue
@@ -322,8 +329,11 @@ enum Evaluation {
         for blender in state.activeBlenders(ownedBy: player) {
             guard let position = blender.position else { continue }
             for step in Direction.diagonal {
-                let square = position.offset(row: step.row, column: step.column)
-                if Board.contains(square) { reach.insert(square) }
+                if let square = Board.step(
+                    from: position, row: step.row, column: step.column, wrap: state.boardWrap
+                ) {
+                    reach.insert(square)
+                }
             }
         }
         return reach

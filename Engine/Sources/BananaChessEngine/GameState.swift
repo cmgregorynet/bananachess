@@ -40,6 +40,9 @@ public struct GameState: Hashable, Codable, Sendable {
     /// the arrangement is already in `pieces` — but a match should be able to say what
     /// it is, to the player and in a payload.
     public var boardSetup: BoardSetup
+    /// Which edges of the board join up. Unlike `boardSetup` this is read on every turn:
+    /// it decides which moves exist.
+    public var boardWrap: BoardWrap
     /// Untouched unless `ruleSet` is `.wildcard`, but always present so the shape of a
     /// stored match never depends on which rules it is played under.
     public var wildcards: WildcardProgress
@@ -53,6 +56,7 @@ public struct GameState: Hashable, Codable, Sendable {
         history: [GameAction] = [],
         ruleSet: RuleSet = .standard,
         boardSetup: BoardSetup = .standard,
+        boardWrap: BoardWrap = .flat,
         wildcards: WildcardProgress = WildcardProgress()
     ) {
         self.pieces = pieces.sorted { $0.id < $1.id }
@@ -63,6 +67,7 @@ public struct GameState: Hashable, Codable, Sendable {
         self.history = history
         self.ruleSet = ruleSet
         self.boardSetup = boardSetup
+        self.boardWrap = boardWrap
         self.wildcards = wildcards
     }
 

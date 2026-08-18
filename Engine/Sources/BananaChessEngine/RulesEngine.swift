@@ -97,8 +97,12 @@ public enum RulesEngine {
         moves.reserveCapacity(4)
 
         for step in steps {
-            let destination = origin.offset(row: step.row, column: step.column)
-            guard Board.contains(destination) else { continue }
+            guard let destination = Board.step(
+                from: origin,
+                row: step.row,
+                column: step.column,
+                wrap: state.boardWrap
+            ) else { continue }
             guard canLand(piece, on: destination, in: state, occupancy: occupancy) else { continue }
             moves.append(Move(pieceID: piece.id, origin: origin, destination: destination))
         }
