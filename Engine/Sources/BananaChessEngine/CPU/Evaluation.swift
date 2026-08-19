@@ -248,7 +248,7 @@ enum Evaluation {
         guard !blenders.isEmpty, !squares.isEmpty else { return nil }
         return blenders
             .flatMap { from in
-                squares.map { Board.blenderSteps(from: from, to: $0, wrap: state.boardWrap) }
+                squares.map { Board.blenderSteps(from: from, to: $0) }
             }
             .min()
     }
@@ -301,7 +301,7 @@ enum Evaluation {
             var mobility = 0
             for step in Direction.diagonal {
                 guard let square = Board.step(
-                    from: position, row: step.row, column: step.column, wrap: state.boardWrap
+                    from: position, row: step.row, column: step.column, wrap: .flat
                 ) else { continue }
                 guard let occupantID = occupancy[square], let occupant = state.piece(with: occupantID) else {
                     mobility += 1
@@ -330,7 +330,7 @@ enum Evaluation {
             guard let position = blender.position else { continue }
             for step in Direction.diagonal {
                 if let square = Board.step(
-                    from: position, row: step.row, column: step.column, wrap: state.boardWrap
+                    from: position, row: step.row, column: step.column, wrap: .flat
                 ) {
                     reach.insert(square)
                 }

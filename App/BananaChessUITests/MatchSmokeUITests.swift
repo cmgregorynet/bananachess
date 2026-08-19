@@ -369,13 +369,13 @@ final class MatchSmokeUITests: XCTestCase {
         if app.buttons["Walls"].value as? String != "selected" {
             app.buttons["Walls"].tap()
         }
-        XCTAssertTrue(app.staticTexts["Edges are walls. Pieces stop at them."].exists)
+        XCTAssertTrue(app.staticTexts["Edges are walls. Everything stops at them."].exists)
 
         app.buttons["Sides"].tap()
         XCTAssertEqual(app.buttons["Sides"].value as? String, "selected")
         XCTAssertEqual(app.buttons["Walls"].value as? String, "not selected")
         XCTAssertTrue(
-            app.staticTexts["Left and right join up. Step off one side, arrive at the other."]
+            app.staticTexts["Fruit can step off the left or right edge and arrive at the other."]
                 .waitForExistence(timeout: 2)
         )
 

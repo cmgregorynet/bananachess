@@ -78,11 +78,14 @@ extension Board {
     }
 
     /// How many blender moves separate two squares — Chebyshev, because a blender covers
-    /// a row and a column at once, and short-way-round on any axis that joins.
-    public static func blenderSteps(from: Position, to: Position, wrap: BoardWrap) -> Int {
+    /// a row and a column at once.
+    ///
+    /// No wrap parameter, deliberately: blenders never cross an edge on any board, so
+    /// their distances are always the walled ones.
+    public static func blenderSteps(from: Position, to: Position) -> Int {
         max(
-            separation(from.row, to.row, joined: wrap.wrapsRows),
-            separation(from.column, to.column, joined: wrap.wrapsColumns)
+            separation(from.row, to.row, joined: false),
+            separation(from.column, to.column, joined: false)
         )
     }
 

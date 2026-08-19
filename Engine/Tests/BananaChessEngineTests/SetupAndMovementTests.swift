@@ -364,15 +364,14 @@ struct BoardWrapTests {
         #expect(destinations == [position(5, 0), position(1, 0), position(0, 5), position(0, 1)])
     }
 
-    @Test("Every piece has a move in every direction once all edges join")
-    func allEdgesJoinedMeansNoPieceIsEverCornered() {
-        var state = GameSetup.newGame(boardWrap: .all)
-        state.boardWrap = .all
-        for piece in state.pieces where piece.isOnBoard {
+    @Test("Every fruit has a move in every direction once all edges join")
+    func allEdgesJoinedMeansNoFruitIsEverCornered() {
+        let state = GameSetup.newGame(boardWrap: .all)
+        for piece in state.pieces where piece.isOnBoard && piece.isFruit {
             // Four directions each, minus whatever is blocked by another piece — the
             // point is that the *edge* never removes one.
             let steps = RulesEngine.legalMoves(for: piece.id, in: state).count
-            let blocked = piece.isBlender ? 0 : Direction.orthogonal.compactMap { step -> Position? in
+            let blocked = Direction.orthogonal.compactMap { step -> Position? in
                 Board.step(from: piece.position!, row: step.row, column: step.column, wrap: .all)
             }.filter { state.piece(at: $0) != nil }.count
             #expect(steps + blocked == 4, "\(piece.id) had \(steps) moves and \(blocked) blocked")
@@ -380,11 +379,13 @@ struct BoardWrapTests {
     }
 
     /// The invariant the whole buy-back rule leans on: a blender never changes square
-    /// colour, so a player's two blenders between them cover the board. A 6×6 board is
-    /// even in both directions, so wrapping shifts by an even number and the parity
-    /// survives — worth pinning, because on an odd board it would not.
-    @Test("A wrapping blender still never changes square colour", arguments: BoardWrap.allCases)
-    func wrappingPreservesSquareColour(wrap: BoardWrap) {
+    /// colour, so a player's two blenders between them cover the board. Blenders not
+    /// crossing edges makes this safe by construction — but the geometry holds anyway on
+    /// a 6×6 board, because a wrap shifts a coordinate by six and six is even. Pinned so
+    /// that letting blenders wrap later, or changing the board size to an odd number,
+    /// fails here rather than silently in play.
+    @Test("Diagonal steps never change square colour, wrapped or not", arguments: BoardWrap.allCases)
+    func diagonalStepsPreserveSquareColour(wrap: BoardWrap) {
         for origin in Board.allPositions {
             for step in Direction.diagonal {
                 guard let destination = Board.step(
@@ -398,19 +399,37 @@ struct BoardWrapTests {
         }
     }
 
-    @Test("A blender can wrap onto a fruit and blend it")
-    func aWrappingBlenderStillBlends() throws {
+    @Test("A blender never crosses an edge, on any board", arguments: BoardWrap.allCases)
+    func blendersNeverWrap(wrap: BoardWrap) throws {
         var builder = BoardBuilder()
+        // On the left edge, with a fruit waiting on the far side of it.
         let blender = builder.blender(.one, at: position(2, 0), home: position(5, 1))
-        _ = builder.fruit(.pineapple, .two, at: position(1, 5))
+        let acrossTheSeam = builder.fruit(.pineapple, .two, at: position(1, 5))
         _ = builder.fruit(.banana, .one, at: position(4, 4))
+        var state = builder.state()
+        state.boardWrap = wrap
+
+        let destinations = Set(RulesEngine.legalMoves(for: blender, in: state).map(\.destination))
+        #expect(destinations == [position(1, 1), position(3, 1)], "only the two squares inside the wall")
+        #expect(!destinations.contains(position(1, 5)))
+        #expect(!destinations.contains(position(3, 5)))
+        #expect(throws: (any Error).self) {
+            try RulesEngine.apply(state.move(blender, to: position(1, 5)), to: state)
+        }
+        #expect(state.piece(with: acrossTheSeam) != nil, "the fruit across the seam is safe")
+    }
+
+    @Test("Fruit crosses the same edge the blender cannot")
+    func fruitCrossesWhereABlenderCannot() throws {
+        var builder = BoardBuilder()
+        _ = builder.blender(.one, at: position(2, 0), home: position(5, 1))
+        let fruit = builder.fruit(.strawberry, .one, at: position(3, 0))
+        _ = builder.fruit(.banana, .two, at: position(1, 5))
         var state = builder.state()
         state.boardWrap = .sides
 
-        let result = try RulesEngine.apply(state.move(blender, to: position(1, 5)), to: state)
-
-        #expect(result.state.scores.one == 3)
-        #expect(result.state.square(of: blender) == position(1, 5))
+        let destinations = Set(RulesEngine.legalMoves(for: fruit, in: state).map(\.destination))
+        #expect(destinations.contains(position(3, 5)), "the fruit may use the seam")
     }
 
     /// Worth stating out loud: with every edge joined, the delivery row is reachable

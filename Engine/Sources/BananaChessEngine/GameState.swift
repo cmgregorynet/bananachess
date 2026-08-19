@@ -103,6 +103,15 @@ public struct GameState: Hashable, Codable, Sendable {
         Set(pieces.filter(\.isBlender).compactMap(\.home))
     }
 
+    /// Which edges a given piece may cross.
+    ///
+    /// Blenders never cross one, whatever the board is set to: joined edges are a rule
+    /// about the fruit's run, not about the machines chasing it. So a blender always sees
+    /// walls, and a fruit sees whatever the match was set up with.
+    public func edges(for piece: Piece) -> BoardWrap {
+        piece.isBlender ? .flat : boardWrap
+    }
+
     /// Every blender the player owns, including any currently off the board.
     public func blenders(ownedBy player: PlayerID) -> [Piece] {
         pieces.filter { $0.owner == player && $0.isBlender }

@@ -118,8 +118,9 @@ Independently of the arrangement, the board's edges can be walls or can join up:
   most: a fruit's own back row is then one step from its delivery row, and matches run
   about a third as long.
 
-Joined edges are drawn as a dashed amber seam, so a legal-move dot on the far side of the
-board has something explaining it.
+**Blenders never cross an edge**, whatever the board is set to — the shortcut belongs to
+the fruit, not to the machines chasing it. Joined edges are drawn as a dashed amber seam,
+so a legal-move dot on the far side of the board has something explaining it.
 
 ## Building and releasing
 

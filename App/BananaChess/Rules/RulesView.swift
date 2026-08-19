@@ -17,7 +17,8 @@ struct RulesView: View {
                         section("How pieces move") {
                             ruleRow(.banana, "Fruit moves one square up, down, left, or right. Forwards and backwards both count.")
                             ruleRow(.blender, "Blenders move one square diagonally, in any direction.")
-                            Text("Nothing moves off the board or through another piece. Fruit never captures.")
+                            Text("Nothing moves through another piece. Fruit never captures.")
+                            Text("Whether the board has edges at all is set before the match. Join the sides, or every edge, and fruit that steps off one side arrives at the other — the joined edges are marked with a dashed line. Blenders never cross one, on any board: the shortcut belongs to the fruit, not to the machines chasing it.")
                         }
 
                         section("Scoring") {

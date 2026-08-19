@@ -190,6 +190,13 @@ is what the buy-back and board-coverage reasoning depends on. Wrapping shifts a 
 by six, which is even, so parity holds — on an odd-sided board it would break. Pinned by a
 test across every square and every wrap rather than left as a comment.
 
+**Blenders are exempt from the edges, and the exemption lives in exactly one place.**
+*Charles, 18 Aug 2026 — `rulesVersion 14`.* `GameState.edges(for:)` hands a blender
+`.flat` and a fruit the match's setting; nothing else in the engine or the CPU asks the
+question. `Board.blenderSteps` dropped its wrap parameter entirely rather than being
+passed `.flat` at its one call site — a rule stated in the type cannot be got wrong by a
+future caller.
+
 **The CPU's distances had to learn the short way round.** Four separate terms measured
 distance with `abs()`: advancement, Banana Split proximity, blender approach and the
 move-ordering heuristic. On joined edges all four overstate distance, which would have had

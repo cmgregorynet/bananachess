@@ -54,7 +54,8 @@ public enum RulesEngine {
     /// 12 — a blender standing on one of its owner's spawns cannot be taken.
     /// 13 — a Tropical Smoothie pays three points instead of blowing up blenders, and
     ///      takes any fruit, whoever grew it.
-    public static let rulesVersion = 13
+    /// 14 — boards may join their edges, and blenders may never cross one.
+    public static let rulesVersion = 14
 
     /// Points it costs to put a destroyed blender back on its spawn, which also takes
     /// the whole turn. Scores may go negative paying it — there is no affordability
@@ -101,7 +102,7 @@ public enum RulesEngine {
                 from: origin,
                 row: step.row,
                 column: step.column,
-                wrap: state.boardWrap
+                wrap: state.edges(for: piece)
             ) else { continue }
             guard canLand(piece, on: destination, in: state, occupancy: occupancy) else { continue }
             moves.append(Move(pieceID: piece.id, origin: origin, destination: destination))
