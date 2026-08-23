@@ -83,12 +83,6 @@ public struct SmoothieProgress: Hashable, Codable, Sendable {
 /// Everything the wildcard rules need to remember. Always present so the shape of a
 /// saved match never depends on its rule set; simply untouched in a standard game.
 public struct WildcardProgress: Hashable, Codable, Sendable {
-    /// Each player's surviving pineapple, promoted once their first one was blended.
-    /// Both players can hold one at the same time.
-    public var goldenPineapple = PlayerPair<PieceID?>(nil)
-    /// Set once that player's first pineapple has been blended, whether or not a
-    /// survivor existed to promote.
-    public var firstPineappleBlended = PlayerPair(false)
     /// Fruit types each player has blended, toward a Tropical Smoothie.
     public var smoothie = PlayerPair(SmoothieProgress())
     /// Smoothies only go off once each.
@@ -105,10 +99,6 @@ public struct WildcardProgress: Hashable, Codable, Sendable {
     public var blenderamaCountered = PlayerPair(false)
 
     public init() {}
-
-    public func isGolden(_ pieceID: PieceID) -> Bool {
-        goldenPineapple.one == pieceID || goldenPineapple.two == pieceID
-    }
 }
 
 /// How a match was won. A points lead is only one of the ways.

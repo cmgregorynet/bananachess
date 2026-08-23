@@ -103,6 +103,28 @@ public struct GameState: Hashable, Codable, Sendable {
         Set(pieces.filter(\.isBlender).compactMap(\.home))
     }
 
+    public func pineapples(ownedBy player: PlayerID) -> [Piece] {
+        pieces.filter { $0.owner == player && $0.kind == .pineapple }
+    }
+
+    /// A player's last pineapple, which is what makes it golden.
+    ///
+    /// Derived rather than recorded: the rule is "whenever there is one pineapple left it
+    /// is golden", which is a fact about the position, not about how it came about. It
+    /// does not matter whether the first one was blended, delivered, or never there —
+    /// and there is no stored flag that can disagree with the board.
+    public func goldenPineapple(ownedBy player: PlayerID) -> Piece? {
+        guard ruleSet.usesWildcards else { return nil }
+        let remaining = pineapples(ownedBy: player)
+        return remaining.count == 1 ? remaining[0] : nil
+    }
+
+    public func isGolden(_ pieceID: PieceID) -> Bool {
+        guard ruleSet.usesWildcards, let piece = piece(with: pieceID), piece.kind == .pineapple
+        else { return false }
+        return pineapples(ownedBy: piece.owner).count == 1
+    }
+
     /// Which edges a given piece may cross.
     ///
     /// Blenders never cross one, whatever the board is set to: joined edges are a rule

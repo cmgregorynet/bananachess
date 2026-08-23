@@ -18,7 +18,8 @@ public struct MatchPayload: Codable, Sendable, Hashable {
     /// 11 — and stops again: the smoothie takes any fruit.
     /// 12 — a match carries the board arrangement it was dealt.
     /// 13 — and which of its edges join up.
-    public static let currentSchemaVersion = 13
+    /// 14 — the Golden Pineapple is read off the board, not recorded.
+    public static let currentSchemaVersion = 14
 
     public let schemaVersion: Int
     public let rulesVersion: Int

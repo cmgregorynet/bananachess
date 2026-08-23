@@ -53,6 +53,36 @@ already hands the attacker a free kill at no cost to itself; adding a second mov
 made first blood close to decisive. Removing it dropped the measured first-kill win rate
 from **88% to 60%** at Medium — see §6.
 
+### Golden Pineapple (wildcard) — a count, not a history
+
+> Whenever a player has exactly **one** pineapple left, that pineapple is golden. It does
+> not matter how the other one went: blended by either side, or delivered for points.
+
+*Rules 15.* Previously the promotion fired only when a pineapple was **blended**, and only
+once, recorded in two stored fields. A pineapple that was *delivered* left its partner
+plain, which is the case this closes.
+
+**Derived, not recorded.** `GameState.isGolden(_:)` and `goldenPineapple(ownedBy:)` count
+the pineapples on the board. `WildcardProgress.goldenPineapple` and
+`firstPineappleBlended` are gone, which is why the payload schema moved to 14. The rule as
+stated is a fact about the position, so the code now says exactly that and there is no
+stored flag that can disagree with the board.
+
+The `.pineappleTurnedGolden` event survives, but it changes nothing when replayed — the
+removal that caused it has already made the survivor golden. It is a cue for the UI to
+play the promotion on, emitted whenever a player's count drops to one, from either
+player's move.
+
+Two consequences worth knowing:
+
+- **Delivering your own pineapple now arms the other one.** Six points for the delivery,
+  and the survivor becomes worth nine across or six to whoever blends it. That is a real
+  new line rather than a footnote.
+- **A position with one pineapple is golden from the start.** The opening always deals
+  two each, so this never happens in play — pinned by a test across all three board
+  setups — but it does mean a hand-built test position with a lone pineapple is holding
+  gold, which caught one of the smoothie fixtures.
+
 ### Tropical Smoothie (wildcard) — a bonus, not a weapon
 
 > Blend at least one of every fruit type and collect **three points**. Whose fruit went in

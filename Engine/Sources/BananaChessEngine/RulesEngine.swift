@@ -55,7 +55,8 @@ public enum RulesEngine {
     /// 13 — a Tropical Smoothie pays three points instead of blowing up blenders, and
     ///      takes any fruit, whoever grew it.
     /// 14 — boards may join their edges, and blenders may never cross one.
-    public static let rulesVersion = 14
+    /// 15 — a player's last pineapple is golden however the other one left.
+    public static let rulesVersion = 15
 
     /// Points it costs to put a destroyed blender back on its spawn, which also takes
     /// the whole turn. Scores may go negative paying it — there is no affordability
@@ -262,9 +263,27 @@ public enum RulesEngine {
         }
 
         next.history.append(action)
+        announceGoldenPineapples(since: state, in: next, events: &events)
         recordScoringTurnForWildcards(by: state.activePlayer, from: state.scores, in: &next)
         finishTurn(in: &next, events: &events)
         return Transition(state: next, events: events)
+    }
+
+    /// A pineapple turning golden changes no state — `GameState.isGolden` reads it off
+    /// the board — so this exists purely so the UI has a beat to play it on. Emitted the
+    /// moment a player drops to their last pineapple, however it went: blended, delivered,
+    /// or taken by either side.
+    private static func announceGoldenPineapples(
+        since previous: GameState,
+        in state: GameState,
+        events: inout [GameEvent]
+    ) {
+        guard state.ruleSet.usesWildcards else { return }
+        for player in PlayerID.allCases {
+            guard previous.pineapples(ownedBy: player).count > 1,
+                  let survivor = state.goldenPineapple(ownedBy: player) else { continue }
+            events.append(.pineappleTurnedGolden(pieceID: survivor.id, owner: player))
+        }
     }
 
     /// Blenderama is a shutout, not just a solo run: it only stands if the opponent has
@@ -343,7 +362,7 @@ public enum RulesEngine {
     ) {
         // A Golden Pineapple is worth double to whoever puts it through a blender —
         // and costs its owner double for the same reason.
-        let magnitude = state.wildcards.isGolden(fruit.id)
+        let magnitude = state.isGolden(fruit.id)
             ? fruit.kind.baseValue * 2
             : fruit.kind.baseValue
         let points = fruit.owner == player ? -magnitude : magnitude
@@ -382,8 +401,6 @@ public enum RulesEngine {
             state.wildcards.blenderamaCountered[fruit.owner] = true
         }
 
-        promoteGoldenPineappleIfNeeded(after: fruit, in: &state, events: &events)
-
         state.wildcards.smoothie[player].record(fruit.kind)
         guard state.wildcards.smoothie[player].isComplete,
               !state.wildcards.smoothieFired[player] else { return }
@@ -401,30 +418,6 @@ public enum RulesEngine {
         state.scores[player] += smoothieAward
         events.append(.smoothiePoured(player: player, points: smoothieAward))
         events.append(.scoreChanged(player: player, newScore: state.scores[player]))
-    }
-
-    /// Losing one of your two pineapples promotes the other.
-    ///
-    /// Blending a player's first pineapple is a real decision precisely because of this:
-    /// it hands that player a comeback piece worth three times base delivered, while
-    /// hanging a doubled prize on it for whoever can reach it. Both players can be
-    /// carrying a Golden Pineapple at once.
-    private static func promoteGoldenPineappleIfNeeded(
-        after fruit: Piece,
-        in state: inout GameState,
-        events: inout [GameEvent]
-    ) {
-        let owner = fruit.owner
-        guard fruit.kind == .pineapple, !state.wildcards.firstPineappleBlended[owner] else { return }
-        state.wildcards.firstPineappleBlended[owner] = true
-
-        // The blended one is already gone, so their other pineapple is the survivor —
-        // unless it has already been delivered or blended too, in which case there is
-        // nothing to promote.
-        guard let survivor = state.pieces.first(where: { $0.kind == .pineapple && $0.owner == owner })
-        else { return }
-        state.wildcards.goldenPineapple[owner] = survivor.id
-        events.append(.pineappleTurnedGolden(pieceID: survivor.id, owner: owner))
     }
 
     /// One of every fruit type through your blenders, at least one of them taken off the
@@ -493,7 +486,7 @@ public enum RulesEngine {
     ) {
         // A Golden Pineapple that makes it across is worth three times its base value
         // rather than the usual two.
-        let points = state.wildcards.isGolden(fruit.id)
+        let points = state.isGolden(fruit.id)
             ? fruit.kind.baseValue * 3
             : fruit.kind.deliveryValue
 

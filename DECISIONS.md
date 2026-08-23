@@ -91,6 +91,17 @@ game. Both players' runs are dead by a median of turn 43 in Medium self-play, no
 survived 24 matches, and the tracker had to stop announcing "countered" because it became
 the normal state of every match.
 
+**The Golden Pineapple is counted, not remembered.** *Charles, 23 Aug 2026 —
+`rulesVersion 15`, schema 14.* "Whenever there is one pineapple left it is always a golden
+pineapple" is a statement about the position, so it is implemented as one:
+`GameState.isGolden(_:)` counts that owner's pineapples. The two stored fields —
+`goldenPineapple` and `firstPineappleBlended` — were deleted rather than kept in sync,
+because a derived rule with a cached copy is a rule with two answers.
+
+The `.pineappleTurnedGolden` event stayed, now inert on replay: the UI needs a beat to
+play the promotion on, and nothing else needs it. That is the same shape as
+`.smoothiePoured` — an event that announces rather than mutates.
+
 **A Tropical Smoothie pays three points and takes any fruit.** *Charles, 17 Aug 2026 —
 `rulesVersion 13`.* One of every fruit type pays `RulesEngine.smoothieAward`, once each
 per match, with no restriction on whose fruit went in.

@@ -135,7 +135,7 @@ enum Evaluation {
 
         total += counterReadiness(state, for: player, weights: weights)
         total += state.wildcards.smoothie[player].collectedCount * weights.smoothieProgress
-        if let golden = state.wildcards.goldenPineapple[player], state.piece(with: golden) != nil {
+        if state.goldenPineapple(ownedBy: player) != nil {
             total += weights.goldenPineapple
         }
         return total

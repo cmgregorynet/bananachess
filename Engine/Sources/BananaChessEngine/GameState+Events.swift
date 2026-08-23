@@ -44,9 +44,10 @@ extension GameState {
             next.activePlayer = active
         case .gameEnded(let outcome):
             next.status = .ended(outcome)
-        case .pineappleTurnedGolden(let pieceID, let owner):
-            next.wildcards.goldenPineapple[owner] = pieceID
-            next.wildcards.firstPineappleBlended[owner] = true
+        case .pineappleTurnedGolden:
+            // Nothing to apply: golden is read off the board, so the removal that caused
+            // it has already made it true. The event is a cue for the UI, not a change.
+            break
         case .turnPassed:
             break
         }

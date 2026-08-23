@@ -150,7 +150,7 @@ struct BoardView: View {
         PieceArtwork(
             kind: piece.kind,
             seat: viewModel.seat(for: piece.owner),
-            isGolden: viewModel.displayState.wildcards.isGolden(piece.id)
+            isGolden: viewModel.displayState.isGolden(piece.id)
         )
             .frame(width: cell, height: cell)
             .scaleEffect(isSelected ? 1.08 : 1)
@@ -295,7 +295,7 @@ struct BoardView: View {
         }
 
         let owner = viewModel.mode.name(for: piece.owner)
-        let golden = viewModel.displayState.wildcards.isGolden(piece.id) ? "golden " : ""
+        let golden = viewModel.displayState.isGolden(piece.id) ? "golden " : ""
         let described = piece.isBlender
             ? "\(owner) blender, \(square)"
             : "\(owner) \(golden)\(piece.kind.rawValue), \(square), value \(piece.kind.baseValue)"

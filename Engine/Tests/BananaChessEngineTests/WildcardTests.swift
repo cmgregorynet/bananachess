@@ -34,29 +34,74 @@ struct WildcardOptInTests {
 
 @Suite("Golden Pineapple")
 struct GoldenPineappleTests {
-    /// Player two owns both pineapples in this fixture; blending one promotes the other.
-    private func fixture() -> (state: GameState, blender: PieceID, blended: PieceID, survivor: PieceID) {
+    /// Player two owns both pineapples in this fixture; removing one makes the other
+    /// golden, whichever way it went.
+    private func fixture() -> (state: GameState, blender: PieceID, doomed: PieceID, survivor: PieceID) {
         var builder = BoardBuilder()
         let blender = builder.blender(.one, at: position(3, 3), home: position(5, 1))
-        let blended = builder.fruit(.pineapple, .two, at: position(2, 4))
+        let doomed = builder.fruit(.pineapple, .two, at: position(2, 4))
         let survivor = builder.fruit(.pineapple, .two, at: position(1, 1))
         _ = builder.fruit(.banana, .one, at: position(5, 5))
-        return (builder.state(ruleSet: .wildcard), blender, blended, survivor)
+        return (builder.state(ruleSet: .wildcard), blender, doomed, survivor)
     }
 
-    @Test("Losing one of your pineapples promotes the other")
-    func promotesTheSurvivor() throws {
+    @Test("Two pineapples means neither is golden")
+    func twoPineapplesMeansNoGold() {
+        let f = fixture()
+        #expect(!f.state.isGolden(f.doomed))
+        #expect(!f.state.isGolden(f.survivor))
+        #expect(f.state.goldenPineapple(ownedBy: .two) == nil)
+    }
+
+    @Test("Losing one to a blender makes the other golden")
+    func blendingOnePromotesTheOther() throws {
         let f = fixture()
         let result = try RulesEngine.apply(f.state.move(f.blender, to: position(2, 4)), to: f.state)
 
-        #expect(result.state.wildcards.goldenPineapple[.two] == f.survivor)
-        #expect(result.state.wildcards.goldenPineapple[.one] == nil, "only the owner's own")
-        #expect(result.state.wildcards.firstPineappleBlended[.two])
+        #expect(result.state.isGolden(f.survivor))
+        #expect(result.state.goldenPineapple(ownedBy: .two)?.id == f.survivor)
+        #expect(result.state.goldenPineapple(ownedBy: .one) == nil, "only the owner's own")
         #expect(result.events.contains(.pineappleTurnedGolden(pieceID: f.survivor, owner: .two)))
-        #expect(result.state.scores.one == 3, "the pineapple that was blended scored normally")
+        #expect(result.state.scores.one == 3, "the one that was blended scored normally")
     }
 
-    @Test("Each player's pineapples are promoted independently")
+    /// The rule is about how many are left, not about how the other one went. Delivering
+    /// one promotes the survivor exactly as blending it does.
+    @Test("Delivering one makes the other golden too")
+    func deliveringOnePromotesTheOther() throws {
+        var builder = BoardBuilder()
+        let delivered = builder.fruit(.pineapple, .one, at: position(1, 2))
+        let survivor = builder.fruit(.pineapple, .one, at: position(4, 4))
+        _ = builder.fruit(.banana, .two, at: position(3, 0))
+        let state = builder.state(ruleSet: .wildcard)
+        #expect(!state.isGolden(survivor), "two of them, so neither yet")
+
+        let result = try RulesEngine.apply(state.move(delivered, to: position(0, 2)), to: state)
+
+        #expect(result.state.piece(with: delivered) == nil)
+        #expect(result.state.isGolden(survivor), "one left, so it is golden")
+        #expect(result.events.contains(.pineappleTurnedGolden(pieceID: survivor, owner: .one)))
+        #expect(result.state.scores.one == 6, "the delivery itself was an ordinary one")
+    }
+
+    @Test("A pineapple the opponent delivers... is not a thing, but their own blend still counts")
+    func eitherSideCanCauseThePromotion() throws {
+        // Player two blends one of their own pineapples: still one left, still golden.
+        var builder = BoardBuilder()
+        let blender = builder.blender(.two, at: position(3, 3), home: position(0, 4))
+        let doomed = builder.fruit(.pineapple, .two, at: position(2, 4))
+        let survivor = builder.fruit(.pineapple, .two, at: position(1, 1))
+        _ = builder.fruit(.banana, .one, at: position(5, 5))
+        let state = builder.state(active: .two, ruleSet: .wildcard)
+
+        let result = try RulesEngine.apply(state.move(blender, to: position(2, 4)), to: state)
+
+        #expect(result.state.piece(with: doomed) == nil)
+        #expect(result.state.isGolden(survivor))
+        #expect(result.state.scores.two == -3, "and it cost them, as a self-blend does")
+    }
+
+    @Test("Each player's pineapples are counted independently")
     func bothPlayersCanHoldOne() throws {
         var builder = BoardBuilder()
         let mine = builder.blender(.one, at: position(3, 3), home: position(5, 1))
@@ -70,17 +115,17 @@ struct GoldenPineappleTests {
         var current = try RulesEngine.apply(state.move(mine, to: position(2, 4)), to: state).state
         current = try RulesEngine.apply(current.move(theirs, to: position(3, 0)), to: current).state
 
-        #expect(current.wildcards.goldenPineapple[.two] == theirSurvivor)
-        #expect(current.wildcards.goldenPineapple[.one] == mySurvivor)
+        #expect(current.goldenPineapple(ownedBy: .two)?.id == theirSurvivor)
+        #expect(current.goldenPineapple(ownedBy: .one)?.id == mySurvivor)
     }
 
-    @Test("Only the first of a player's pineapples promotes anything")
-    func promotesOnlyOnce() throws {
+    @Test("Blending the last one leaves nothing golden")
+    func theLastPineappleLeavesNothing() throws {
         let f = fixture()
         var state = try RulesEngine.apply(f.state.move(f.blender, to: position(2, 4)), to: f.state).state
-        let golden = try #require(state.wildcards.goldenPineapple[.two])
+        #expect(state.isGolden(f.survivor))
 
-        // Walk round to the golden one and blend that too; nothing new is promoted.
+        // Walk round to the golden one and take that too.
         for step in [position(1, 3), position(2, 2)] {
             state.activePlayer = .one
             state = try RulesEngine.apply(state.move(f.blender, to: step), to: state).state
@@ -88,8 +133,12 @@ struct GoldenPineappleTests {
         state.activePlayer = .one
         let onGolden = try RulesEngine.apply(state.move(f.blender, to: position(1, 1)), to: state)
 
-        #expect(onGolden.state.wildcards.goldenPineapple[.two] == golden, "the record stands")
+        #expect(onGolden.state.goldenPineapple(ownedBy: .two) == nil, "none left to be golden")
         #expect(onGolden.state.scores.one == 3 + 6, "and it paid double on the way out")
+        #expect(
+            !onGolden.events.contains { if case .pineappleTurnedGolden = $0 { true } else { false } },
+            "nothing was promoted by taking the last one"
+        )
     }
 
     @Test("A Golden Pineapple delivers for three times base, not two")
@@ -97,9 +146,8 @@ struct GoldenPineappleTests {
         var builder = BoardBuilder()
         let golden = builder.fruit(.pineapple, .one, at: position(1, 2))
         _ = builder.fruit(.banana, .two, at: position(4, 4))
-        var state = builder.state(ruleSet: .wildcard)
-        state.wildcards.goldenPineapple[.one] = golden
-        state.wildcards.firstPineappleBlended[.one] = true
+        let state = builder.state(ruleSet: .wildcard)
+        #expect(state.isGolden(golden), "their only pineapple")
 
         let result = try RulesEngine.apply(state.move(golden, to: position(0, 2)), to: state)
 
@@ -110,11 +158,9 @@ struct GoldenPineappleTests {
     func opponentBlendsGoldenForDouble() throws {
         var builder = BoardBuilder()
         let blender = builder.blender(.one, at: position(3, 3), home: position(5, 1))
-        let golden = builder.fruit(.pineapple, .two, at: position(2, 4))
+        _ = builder.fruit(.pineapple, .two, at: position(2, 4))
         _ = builder.fruit(.banana, .two, at: position(1, 1))
-        var state = builder.state(ruleSet: .wildcard)
-        state.wildcards.goldenPineapple[.two] = golden
-        state.wildcards.firstPineappleBlended[.two] = true
+        let state = builder.state(ruleSet: .wildcard)
 
         let result = try RulesEngine.apply(state.move(blender, to: position(2, 4)), to: state)
 
@@ -125,29 +171,37 @@ struct GoldenPineappleTests {
     func selfBlendingGoldenCostsDouble() throws {
         var builder = BoardBuilder()
         let blender = builder.blender(.one, at: position(3, 3), home: position(5, 1))
-        let golden = builder.fruit(.pineapple, .one, at: position(2, 4))
+        _ = builder.fruit(.pineapple, .one, at: position(2, 4))
         _ = builder.fruit(.banana, .two, at: position(1, 1))
-        var state = builder.state(ruleSet: .wildcard)
-        state.wildcards.goldenPineapple[.one] = golden
-        state.wildcards.firstPineappleBlended[.one] = true
+        let state = builder.state(ruleSet: .wildcard)
 
         let result = try RulesEngine.apply(state.move(blender, to: position(2, 4)), to: state)
 
         #expect(result.state.scores.one == -6)
     }
 
-    @Test("A pineapple that is delivered rather than blended promotes nothing")
-    func deliveryDoesNotPromote() throws {
+    @Test("A standard match has no Golden Pineapple at all")
+    func standardRulesHaveNoGold() throws {
         var builder = BoardBuilder()
-        let pineapple = builder.fruit(.pineapple, .one, at: position(1, 2))
-        _ = builder.fruit(.pineapple, .one, at: position(4, 4))
-        _ = builder.fruit(.banana, .two, at: position(3, 0))
-        let state = builder.state(ruleSet: .wildcard)
+        let blender = builder.blender(.one, at: position(3, 3), home: position(5, 1))
+        let lone = builder.fruit(.pineapple, .two, at: position(2, 4))
+        _ = builder.fruit(.banana, .two, at: position(1, 1))
+        let state = builder.state()
+        #expect(!state.isGolden(lone), "a lone pineapple is just a pineapple here")
 
-        let result = try RulesEngine.apply(state.move(pineapple, to: position(0, 2)), to: state)
+        let result = try RulesEngine.apply(state.move(blender, to: position(2, 4)), to: state)
+        #expect(result.state.scores.one == 3, "plain base value")
+    }
 
-        #expect(result.state.wildcards.goldenPineapple[.one] == nil)
-        #expect(result.state.scores.one == 6, "an ordinary delivery")
+    /// The opening deals two each, so nothing starts golden — worth pinning, since the
+    /// rule is now a count and a setup change could hand someone gold on turn one.
+    @Test("Nothing is golden at the opening", arguments: BoardSetup.allCases)
+    func theOpeningIsNeverGolden(setup: BoardSetup) {
+        let state = GameSetup.newGame(ruleSet: .wildcard, boardSetup: setup, seed: 42)
+        for player in PlayerID.allCases {
+            #expect(state.pineapples(ownedBy: player).count == 2)
+            #expect(state.goldenPineapple(ownedBy: player) == nil)
+        }
     }
 }
 
@@ -337,6 +391,9 @@ struct TropicalSmoothieTests {
         _ = builder.fruit(.banana, .one, at: position(2, 2))
         _ = builder.fruit(.strawberry, .one, at: position(2, 4))
         _ = builder.fruit(.pineapple, .one, at: position(4, 4))
+        // A second pineapple, out of the blender's way, so the one being blended is not
+        // golden. This test is about the smoothie, not about the doubled price of gold.
+        _ = builder.fruit(.pineapple, .one, at: position(0, 0))
         _ = builder.fruit(.banana, .one, at: position(5, 5))
         _ = builder.fruit(.banana, .two, at: position(1, 5))
         _ = builder.blender(.two, at: position(0, 1), home: position(0, 1))

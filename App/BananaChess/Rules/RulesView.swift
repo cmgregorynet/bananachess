@@ -78,7 +78,7 @@ struct RulesView: View {
 
             wildcardRule(
                 "Golden Pineapple",
-                "You start with two. Lose one to a blender and the other turns golden: three times its value if you get it across, and double to anyone who blends it. Both players can be carrying one."
+                "You start with two. The moment you are down to one, whichever way the other one went — blended by either of you, or run across for points — the survivor turns golden: three times its value if you get it across, and double to anyone who blends it. Both players can be carrying one."
             )
             wildcardRule(
                 "Banana delivery",
