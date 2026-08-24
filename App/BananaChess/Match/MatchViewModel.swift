@@ -357,6 +357,8 @@ final class MatchViewModel {
         // The two big wildcard moments get a beat to land before play carries on.
         case .pineappleTurnedGolden: return .milliseconds(620)
         case .smoothie, .smoothiePoured: return .milliseconds(620)
+        // Long enough to actually read the arithmetic before the board moves on.
+        case .blenderBattle: return .milliseconds(900)
         // Long enough for the pulp to read; the tail of the burst is allowed to overrun
         // into the next event rather than holding up the turn.
         case .blended: return .milliseconds(420)
@@ -428,6 +430,18 @@ final class MatchViewModel {
             }
             // A self-blend: the price is the point of the move, so say it plainly.
             return BoardFlash(text: "Own goal!  −\(abs(points))", position: square)
+        case .blenderBattle(let report, let square):
+            // The whole sum, because the alternative is a blender vanishing on a dice
+            // roll nobody saw. Reads from the acting player's side of the board.
+            let mine = report.attacker == bottomPlayer
+            let ours = mine ? report.attackerTotal : report.defenderTotal
+            let theirs = mine ? report.defenderTotal : report.attackerTotal
+            let ourRoll = mine ? report.attackerRoll : report.defenderRoll
+            let theirRoll = mine ? report.defenderRoll : report.attackerRoll
+            return BoardFlash(
+                text: "Battle!  \(ours) v \(theirs)  (rolled \(ourRoll) and \(theirRoll))",
+                position: square
+            )
         case .blenderDestroyed(_, _, _, let square):
             return BoardFlash(text: "Blender destroyed", position: square)
         case .blenderRestored(_, _, let at, let cost):

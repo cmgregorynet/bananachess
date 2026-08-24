@@ -16,20 +16,11 @@ final class OnlineLobbyViewModel {
     @ObservationIgnored private var actionTask: Task<Void, Never>?
     @ObservationIgnored private var updatesTask: Task<Void, Never>?
 
-    let ruleSet: RuleSet
-    let boardSetup: BoardSetup
-    let boardWrap: BoardWrap
+    let options: MatchOptions
 
-    init(
-        service: any OnlineMatchService,
-        ruleSet: RuleSet = .standard,
-        boardSetup: BoardSetup = .standard,
-        boardWrap: BoardWrap = .flat
-    ) {
+    init(service: any OnlineMatchService, options: MatchOptions = MatchOptions()) {
         self.service = service
-        self.ruleSet = ruleSet
-        self.boardSetup = boardSetup
-        self.boardWrap = boardWrap
+        self.options = options
     }
 
     deinit {
@@ -93,27 +84,13 @@ final class OnlineLobbyViewModel {
 
     /// Both entry points return a match to open; failure leaves the lobby untouched.
     func startAutomatch(then open: @escaping (OnlineMatchSummary) -> Void) {
-        let (ruleSet, boardSetup, boardWrap) = (ruleSet, boardSetup, boardWrap)
-        run(
-            {
-                try await self.service.startAutomatch(
-                    ruleSet: ruleSet, boardSetup: boardSetup, boardWrap: boardWrap
-                )
-            },
-            then: open
-        )
+        let options = options
+        run({ try await self.service.startAutomatch(options) }, then: open)
     }
 
     func inviteFriend(then open: @escaping (OnlineMatchSummary) -> Void) {
-        let (ruleSet, boardSetup, boardWrap) = (ruleSet, boardSetup, boardWrap)
-        run(
-            {
-                try await self.service.inviteFriend(
-                    ruleSet: ruleSet, boardSetup: boardSetup, boardWrap: boardWrap
-                )
-            },
-            then: open
-        )
+        let options = options
+        run({ try await self.service.inviteFriend(options) }, then: open)
     }
 
     private func run(

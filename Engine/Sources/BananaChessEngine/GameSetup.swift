@@ -48,6 +48,7 @@ public enum GameSetup {
         ruleSet: RuleSet = .standard,
         boardSetup: BoardSetup = .standard,
         boardWrap: BoardWrap = .flat,
+        blenderBattles: Bool = false,
         seed: UInt64? = nil
     ) -> GameState {
         let pieces = switch boardSetup {
@@ -61,7 +62,8 @@ public enum GameSetup {
             activePlayer: startingPlayer,
             ruleSet: ruleSet,
             boardSetup: boardSetup,
-            boardWrap: boardWrap
+            boardWrap: boardWrap,
+            blenderBattles: blenderBattles
         )
     }
 

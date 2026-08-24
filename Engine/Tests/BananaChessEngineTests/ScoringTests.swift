@@ -421,3 +421,179 @@ struct BlenderRestoreTests {
         }
     }
 }
+
+@Suite("Blender battles")
+struct BlenderBattleTests {
+    /// Two enemy blenders a diagonal apart, with each side's fruit set by the test so the
+    /// standing totals are whatever it needs them to be.
+    private func fixture(
+        mine: [PieceKind],
+        theirs: [PieceKind],
+        battles: Bool = true
+    ) -> (state: GameState, attacker: PieceID, defender: PieceID) {
+        var builder = BoardBuilder()
+        let attacker = builder.blender(.one, at: position(3, 3), home: position(5, 1))
+        let defender = builder.blender(.two, at: position(2, 2), home: position(0, 4))
+        for (index, kind) in mine.enumerated() {
+            _ = builder.fruit(kind, .one, at: position(5, index))
+        }
+        for (index, kind) in theirs.enumerated() {
+            _ = builder.fruit(kind, .two, at: position(0, index))
+        }
+        var state = builder.state()
+        state.blenderBattles = battles
+        return (state, attacker, defender)
+    }
+
+    @Test("With battles off, a blender still simply takes the square")
+    func battlesOffIsTheOldRule() throws {
+        let f = fixture(mine: [.banana], theirs: [.pineapple, .pineapple], battles: false)
+        let result = try RulesEngine.apply(f.state.move(f.attacker, to: position(2, 2)), to: f.state)
+
+        #expect(result.state.isOffBoard(f.defender), "the defender is gone regardless of totals")
+        #expect(result.state.square(of: f.attacker) == position(2, 2))
+        #expect(!result.events.contains { if case .blenderBattle = $0 { true } else { false } })
+    }
+
+    @Test("An overwhelming attacker wins and takes the square")
+    func aStrongAttackerWins() throws {
+        // 9 of fruit plus 2, against 1. No pair of dice can close eight points.
+        let f = fixture(mine: [.pineapple, .pineapple, .pineapple], theirs: [.banana])
+        let result = try RulesEngine.apply(f.state.move(f.attacker, to: position(2, 2)), to: f.state)
+
+        let report = try #require(result.events.battleReports.first)
+        #expect(report.attacker == .one)
+        #expect(report.attackerFruit == 9)
+        #expect(report.attackerBonus == RulesEngine.battleAttackerBonus)
+        #expect(report.defenderFruit == 1)
+        #expect(report.attackerWins)
+        #expect(result.state.isOffBoard(f.defender))
+        #expect(result.state.square(of: f.attacker) == position(2, 2), "and moves in")
+    }
+
+    @Test("An overwhelmed attacker loses its own blender, and the defender does not move")
+    func aWeakAttackerLosesItsOwn() throws {
+        // 1 plus 2, against 9. The attack cannot succeed on any roll.
+        let f = fixture(mine: [.banana], theirs: [.pineapple, .pineapple, .pineapple])
+        let result = try RulesEngine.apply(f.state.move(f.attacker, to: position(2, 2)), to: f.state)
+
+        let report = try #require(result.events.battleReports.first)
+        #expect(!report.attackerWins)
+        #expect(report.winner == .two)
+        #expect(result.state.isOffBoard(f.attacker), "the attacker is the one that leaves")
+        #expect(result.state.square(of: f.defender) == position(2, 2), "the defender holds its square")
+        #expect(result.state.destroyedBlenders(ownedBy: .one).count == 1)
+        #expect(result.state.destroyedBlenders(ownedBy: .two).isEmpty)
+    }
+
+    @Test("Only fruit still standing counts — blended and delivered fruit does not")
+    func onlyStandingFruitCounts() throws {
+        var builder = BoardBuilder()
+        let attacker = builder.blender(.one, at: position(3, 3), home: position(5, 1))
+        let defender = builder.blender(.two, at: position(2, 2), home: position(0, 4))
+        _ = builder.fruit(.pineapple, .one, at: position(5, 0))
+        _ = builder.fruit(.banana, .two, at: position(0, 0))
+        // A wildcard banana of theirs, delivered and waiting off-board to come back: it
+        // is still their fruit, but it is not standing on anything.
+        let waiting = builder.fruit(.pineapple, .two, at: position(0, 3))
+        var state = builder.state(ruleSet: .wildcard)
+        state.blenderBattles = true
+        state.setPosition(nil, for: waiting)
+
+        #expect(state.fruit(ownedBy: .two).count == 2, "both still theirs")
+        #expect(state.fruitStandingValue(for: .two) == 1, "but only the banana is standing")
+        #expect(state.fruitStandingValue(for: .one) == 3)
+
+        let result = try RulesEngine.apply(state.move(attacker, to: position(2, 2)), to: state)
+        let report = try #require(result.events.battleReports.first)
+        #expect(report.attackerFruit == 3)
+        #expect(report.defenderFruit == 1)
+        #expect(result.state.isOffBoard(defender))
+    }
+
+    @Test("Running into your own blender is not a battle — there is nobody to roll against")
+    func friendlyCollisionsAreNotBattles() throws {
+        var builder = BoardBuilder()
+        let attacker = builder.blender(.one, at: position(3, 3), home: position(5, 1))
+        let friend = builder.blender(.one, at: position(2, 2), home: position(5, 4))
+        _ = builder.fruit(.pineapple, .two, at: position(0, 0))
+        _ = builder.fruit(.banana, .one, at: position(5, 0))
+        var state = builder.state()
+        state.blenderBattles = true
+
+        let result = try RulesEngine.apply(state.move(attacker, to: position(2, 2)), to: state)
+
+        #expect(!result.events.contains { if case .blenderBattle = $0 { true } else { false } })
+        #expect(result.state.isOffBoard(friend))
+        #expect(result.state.square(of: attacker) == position(2, 2))
+    }
+
+    /// Both dice come from the position, so the same move on two devices settles the same
+    /// way. Without this an online match would fork the moment a battle happened.
+    @Test("The same battle from the same position always goes the same way")
+    func battlesAreDeterministic() throws {
+        let f = fixture(mine: [.strawberry, .banana], theirs: [.strawberry, .banana])
+        let move = f.state.move(f.attacker, to: position(2, 2))
+
+        let first = try RulesEngine.apply(move, to: f.state)
+        let second = try RulesEngine.apply(move, to: f.state)
+
+        #expect(first.events == second.events)
+        #expect(first.state == second.state)
+    }
+
+    /// Evenly matched sides, so the dice decide. Sampled over many distinct positions to
+    /// check the rolls are actually varying rather than stuck.
+    @Test("The dice are dice: even sides do not always go the same way")
+    func evenBattlesAreDecidedByTheDice() throws {
+        var attackerWins = 0
+        var rolls: Set<Int> = []
+        var sampled = 0
+
+        for row in 1..<Board.size - 1 {
+            for column in 1..<Board.size - 1 {
+                var builder = BoardBuilder()
+                let attacker = builder.blender(.one, at: position(row, column), home: position(5, 1))
+                _ = builder.blender(.two, at: position(row - 1, column - 1), home: position(0, 4))
+                // Level on standing fruit, so only the attacker's +2 and the dice differ.
+                _ = builder.fruit(.strawberry, .one, at: position(5, 5))
+                _ = builder.fruit(.strawberry, .two, at: position(0, 0))
+                var state = builder.state()
+                state.blenderBattles = true
+
+                let result = try RulesEngine.apply(
+                    state.move(attacker, to: position(row - 1, column - 1)), to: state
+                )
+                let report = try #require(result.events.battleReports.first)
+                rolls.insert(report.attackerRoll)
+                rolls.insert(report.defenderRoll)
+                if report.attackerWins { attackerWins += 1 }
+                sampled += 1
+            }
+        }
+
+        #expect(rolls.allSatisfy { (1...6).contains($0) }, "a die shows one to six")
+        #expect(rolls.count >= 5, "the rolls should vary across positions, saw \(rolls.sorted())")
+        #expect(attackerWins > 0, "the attacker should win some")
+        #expect(attackerWins < sampled, "and lose some, even holding the +2")
+    }
+
+    @Test("The CPU cannot see the dice before it decides")
+    func theSearchDoesNotPeekAtTheDice() throws {
+        let f = fixture(mine: [.strawberry], theirs: [.strawberry])
+        let move = f.state.move(f.attacker, to: position(2, 2))
+
+        let searched = try RulesEngine.apply(move, to: f.state, battles: .expected)
+        let searchReport = try #require(searched.events.battleReports.first)
+
+        #expect(searchReport.attackerRoll == searchReport.defenderRoll, "no dice in the search")
+        // Level fruit plus the attacker's bonus, so the search expects the attack to work.
+        #expect(searchReport.attackerWins)
+    }
+}
+
+extension Array where Element == GameEvent {
+    var battleReports: [BattleReport] {
+        compactMap { if case .blenderBattle(let report, _) = $0 { report } else { nil } }
+    }
+}

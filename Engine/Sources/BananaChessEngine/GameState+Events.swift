@@ -34,6 +34,9 @@ extension GameState {
             } else {
                 next.remove(pieceID)
             }
+        case .blenderBattle:
+            // Announces the roll; the `blenderDestroyed` beside it moves the piece.
+            break
         case .smoothiePoured:
             // The points arrive in the `scoreChanged` that follows it; this event exists
             // for the UI to celebrate, and moves nothing on the board.

@@ -309,7 +309,7 @@ struct BoardSetupTests {
 
     @Test("The setup survives a round trip through a payload")
     func setupSurvivesEncoding() throws {
-        let payload = MatchPayload.newMatch(id: "m", ruleSet: .wildcard, boardSetup: .blendy)
+        let payload = MatchPayload.newMatch(id: "m", options: MatchOptions(ruleSet: .wildcard, boardSetup: .blendy))
         let decoded = try MatchCodec.decode(try MatchCodec.encode(payload))
 
         #expect(decoded.state.boardSetup == .blendy)
@@ -451,7 +451,7 @@ struct BoardWrapTests {
 
     @Test("The edges survive a round trip through a payload")
     func wrapSurvivesEncoding() throws {
-        let payload = MatchPayload.newMatch(id: "m", boardSetup: .random, boardWrap: .all)
+        let payload = MatchPayload.newMatch(id: "m", options: MatchOptions(boardSetup: .random, boardWrap: .all))
         let decoded = try MatchCodec.decode(try MatchCodec.encode(payload))
 
         #expect(decoded.state.boardWrap == .all)

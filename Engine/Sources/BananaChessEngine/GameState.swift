@@ -43,6 +43,9 @@ public struct GameState: Hashable, Codable, Sendable {
     /// Which edges of the board join up. Unlike `boardSetup` this is read on every turn:
     /// it decides which moves exist.
     public var boardWrap: BoardWrap
+    /// Whether a blender running into another fights for it rather than simply taking
+    /// it. Read on every turn, like `boardWrap`.
+    public var blenderBattles: Bool
     /// Untouched unless `ruleSet` is `.wildcard`, but always present so the shape of a
     /// stored match never depends on which rules it is played under.
     public var wildcards: WildcardProgress
@@ -57,6 +60,7 @@ public struct GameState: Hashable, Codable, Sendable {
         ruleSet: RuleSet = .standard,
         boardSetup: BoardSetup = .standard,
         boardWrap: BoardWrap = .flat,
+        blenderBattles: Bool = false,
         wildcards: WildcardProgress = WildcardProgress()
     ) {
         self.pieces = pieces.sorted { $0.id < $1.id }
@@ -68,6 +72,7 @@ public struct GameState: Hashable, Codable, Sendable {
         self.ruleSet = ruleSet
         self.boardSetup = boardSetup
         self.boardWrap = boardWrap
+        self.blenderBattles = blenderBattles
         self.wildcards = wildcards
     }
 
@@ -101,6 +106,13 @@ public struct GameState: Hashable, Codable, Sendable {
     /// depends on which `BoardSetup` the match was dealt.
     public var allSpawnSquares: Set<Position> {
         Set(pieces.filter(\.isBlender).compactMap(\.home))
+    }
+
+    /// What a player brings to a blender battle: the value of the fruit they still have
+    /// standing. Fruit that has been blended is gone, and delivered fruit has left the
+    /// board — including a wildcard banana waiting off-board to come back.
+    public func fruitStandingValue(for player: PlayerID) -> Int {
+        onBoardFruit(ownedBy: player).reduce(0) { $0 + $1.kind.baseValue }
     }
 
     public func pineapples(ownedBy player: PlayerID) -> [Piece] {

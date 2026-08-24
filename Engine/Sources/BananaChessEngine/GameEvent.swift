@@ -2,6 +2,10 @@
 /// and never recomputes rules or scores for itself.
 public enum GameEvent: Hashable, Codable, Sendable {
     case moved(pieceID: PieceID, from: Position, to: Position)
+    /// A blender battle was fought over a square. Carries its whole arithmetic so the
+    /// board can show why it went the way it did; the `blenderDestroyed` that follows
+    /// says which blender actually left.
+    case blenderBattle(BattleReport, at: Position)
     /// A blender ran into another and destroyed it. The attacker takes the square; the
     /// victim is gone until its owner buys it back.
     case blenderDestroyed(pieceID: PieceID, owner: PlayerID, by: PieceID, at: Position)

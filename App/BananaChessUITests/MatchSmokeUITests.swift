@@ -15,7 +15,8 @@ final class MatchSmokeUITests: XCTestCase {
     private func launch(
         wildcards: Bool = false,
         board: String = "standard",
-        edges: String = "flat"
+        edges: String = "flat",
+        battles: Bool = false
     ) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments += [
@@ -23,6 +24,7 @@ final class MatchSmokeUITests: XCTestCase {
             "-wildcardRulesEnabled", wildcards ? "YES" : "NO",
             "-boardSetup", board,
             "-boardWrap", edges,
+            "-blenderBattles", battles ? "YES" : "NO",
         ]
         app.launch()
         return app
@@ -433,6 +435,89 @@ final class MatchSmokeUITests: XCTestCase {
         XCTAssertFalse(
             square(app, 3, 5).label.contains("legal move"),
             "with walls the far column must not be reachable: \(square(app, 3, 5).label)"
+        )
+    }
+
+    // MARK: - Blender battles
+
+    func testBlenderBattlesAreOffByDefault() {
+        // No -blenderBattles argument: this reads the shipped default.
+        let app = XCUIApplication()
+        app.launchArguments += ["-hasSeenTeachingOverlay", "YES"]
+        app.launch()
+
+        XCTAssertEqual(
+            app.buttons["Blender battles"].value as? String, "off",
+            "battles are an opt-in, like the wildcard rules"
+        )
+    }
+
+    func testBlenderBattlesToggleExplainsItself() {
+        let app = XCUIApplication()
+        app.launchArguments += ["-hasSeenTeachingOverlay", "YES"]
+        app.launch()
+
+        let toggle = app.buttons["Blender battles"]
+        let wasOn = toggle.value as? String == "on"
+        if wasOn { toggle.tap() }
+
+        toggle.tap()
+        XCTAssertEqual(toggle.value as? String, "on")
+        XCTAssertEqual(
+            app.buttons["Wildcard rules"].value as? String, "off",
+            "the two opt-ins are independent"
+        )
+
+        // Put it back so it cannot leak into tests that walk fixed board coordinates.
+        toggle.tap()
+        XCTAssertEqual(toggle.value as? String, "off")
+    }
+
+    /// A battle has to be legible: a blender vanishing on a dice roll nobody saw is the
+    /// worst version of this rule.
+    func testABattleShowsItsArithmetic() {
+        let app = launch(battles: true)
+        app.buttons["Local Two Player. Share one phone and take turns."].tap()
+        XCTAssertTrue(square(app, 4, 0).waitForExistence(timeout: 5))
+
+        // Walk the two blenders together: player one from (5,1), player two from (0,4).
+        func move(_ from: (Int, Int), _ to: (Int, Int)) {
+            square(app, from.0, from.1).tap()
+            square(app, to.0, to.1).tap()
+            Thread.sleep(forTimeInterval: 1.0)
+        }
+        move((4, 2), (3, 2)); move((1, 3), (2, 3))
+        move((5, 1), (4, 2)); move((0, 4), (1, 3))
+        move((4, 2), (3, 3)); move((1, 3), (2, 4))
+
+        // The attack itself, with no wait afterwards: the flash is cleared as soon as the
+        // move finishes animating, so sleeping first would look after it had gone.
+        square(app, 3, 3).tap()
+        square(app, 2, 4).tap()
+
+        // Everything the label has to say goes into one predicate. The flash is
+        // transient, so waiting for it and then reading it back is a race the label
+        // usually loses — assert the whole content in the wait itself.
+        let battleLabel = app.staticTexts.containing(
+            NSPredicate(
+                format: "label CONTAINS 'Battle!' AND label CONTAINS 'rolled' AND label CONTAINS ' v '"
+            )
+        ).firstMatch
+        XCTAssertTrue(
+            battleLabel.waitForExistence(timeout: 5),
+            "the board should show the battle, both totals and both dice while it resolves"
+        )
+
+        // And the durable half: whichever way it went, exactly one blender left the board
+        // and its owner is offered it back.
+        Thread.sleep(forTimeInterval: 2.0)
+        let spawns = [(0, 1), (0, 4), (5, 1), (5, 4)]
+        let offeringBuyBack = spawns.filter {
+            square(app, $0.0, $0.1).label.contains("buy it back")
+        }
+        XCTAssertFalse(
+            offeringBuyBack.isEmpty,
+            "a battle should have cost somebody a blender"
         )
     }
 }

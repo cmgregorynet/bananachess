@@ -35,19 +35,12 @@ public actor InMemoryMatchStore {
     func createMatch(
         host: OnlineLocalPlayer,
         guest: OnlineLocalPlayer,
-        ruleSet: RuleSet,
-        boardSetup: BoardSetup,
-        boardWrap: BoardWrap
+        options: MatchOptions
     ) -> String {
         let id = "match-\(nextMatchNumber)"
         nextMatchNumber += 1
         records[id] = Record(
-            payload: .newMatch(
-                id: id,
-                ruleSet: ruleSet,
-                boardSetup: boardSetup,
-                boardWrap: boardWrap
-            ),
+            payload: .newMatch(id: id, options: options),
             participants: [host, guest],
             status: .yourTurn,
             outcome: nil,
@@ -137,27 +130,13 @@ public struct InMemoryMatchService: OnlineMatchService {
         return summary(id: id, record: record)
     }
 
-    public func startAutomatch(
-        ruleSet: RuleSet = .standard,
-        boardSetup: BoardSetup = .standard,
-        boardWrap: BoardWrap = .flat
-    ) async throws -> OnlineMatchSummary {
-        let id = await store.createMatch(
-            host: localPlayer,
-            guest: opponent,
-            ruleSet: ruleSet,
-            boardSetup: boardSetup,
-            boardWrap: boardWrap
-        )
+    public func startAutomatch(_ options: MatchOptions = MatchOptions()) async throws -> OnlineMatchSummary {
+        let id = await store.createMatch(host: localPlayer, guest: opponent, options: options)
         return try await loadMatch(id: id)
     }
 
-    public func inviteFriend(
-        ruleSet: RuleSet = .standard,
-        boardSetup: BoardSetup = .standard,
-        boardWrap: BoardWrap = .flat
-    ) async throws -> OnlineMatchSummary {
-        try await startAutomatch(ruleSet: ruleSet, boardSetup: boardSetup, boardWrap: boardWrap)
+    public func inviteFriend(_ options: MatchOptions = MatchOptions()) async throws -> OnlineMatchSummary {
+        try await startAutomatch(options)
     }
 
     public func submit(_ payload: MatchPayload, expectedPredecessor: Int, for matchID: String) async throws {

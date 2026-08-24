@@ -13,6 +13,8 @@ enum Haptics {
         switch event {
         case .moved:
             UIImpactFeedbackGenerator(style: .light).impactOccurred()
+        case .blenderBattle:
+            UIImpactFeedbackGenerator(style: .heavy).impactOccurred(intensity: 0.7)
         case .blenderDestroyed, .smoothie:
             UIImpactFeedbackGenerator(style: .rigid).impactOccurred(intensity: 0.9)
         case .blenderRestored, .bananaReturned, .blenderRespawned:

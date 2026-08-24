@@ -9,6 +9,7 @@ struct HomeView: View {
     @AppStorage("wildcardRulesEnabled") private var wildcardRules = false
     @AppStorage("boardSetup") private var storedBoardSetup = BoardSetup.standard.rawValue
     @AppStorage("boardWrap") private var storedBoardWrap = BoardWrap.flat.rawValue
+    @AppStorage("blenderBattles") private var blenderBattles = false
 
     @State private var route: Route?
     @State private var isShowingRules = false
@@ -58,6 +59,14 @@ struct HomeView: View {
                     BoardOptionsPanel(setup: $storedBoardSetup, wrap: $storedBoardWrap)
                     Spacer(minLength: 10)
                     WildcardRulesToggle(isOn: $wildcardRules)
+                    Spacer(minLength: 8)
+                    RulesCheckbox(
+                        isOn: $blenderBattles,
+                        title: "Blender battles",
+                        detail: "Blenders fight for a square instead of just taking it. "
+                            + "Your standing fruit, plus two for attacking, plus a die each.",
+                        hint: "Blender collisions are decided by fruit on the board and a dice roll"
+                    )
                     Spacer(minLength: 12)
                     Button("How to play") { isShowingRules = true }
                         .buttonStyle(PaperButtonStyle())
@@ -74,7 +83,8 @@ struct HomeView: View {
                             state: GameSetup.newGame(
                                 ruleSet: ruleSet,
                                 boardSetup: boardSetup,
-                                boardWrap: boardWrap
+                                boardWrap: boardWrap,
+                                blenderBattles: blenderBattles
                             ),
                             blendEffects: blendEffects
                         )
@@ -87,7 +97,8 @@ struct HomeView: View {
                                 startingPlayer: .one,
                                 ruleSet: ruleSet,
                                 boardSetup: boardSetup,
-                                boardWrap: boardWrap
+                                boardWrap: boardWrap,
+                                blenderBattles: blenderBattles
                             ),
                             blendEffects: blendEffects
                         )
@@ -96,9 +107,12 @@ struct HomeView: View {
                     OnlineLobbyView(
                         viewModel: OnlineLobbyViewModel(
                             service: onlineService,
-                            ruleSet: ruleSet,
-                            boardSetup: boardSetup,
-                            boardWrap: boardWrap
+                            options: MatchOptions(
+                                ruleSet: ruleSet,
+                                boardSetup: boardSetup,
+                                boardWrap: boardWrap,
+                                blenderBattles: blenderBattles
+                            )
                         )
                     )
                 }
@@ -164,6 +178,24 @@ struct WildcardRulesToggle: View {
     @Binding var isOn: Bool
 
     var body: some View {
+        RulesCheckbox(
+            isOn: $isOn,
+            title: "Wildcard rules",
+            detail: "Golden Pineapple, Banana Split, Tropical Smoothie, Blenderama.",
+            hint: "Adds four extra rules, including two ways to win outright"
+        )
+    }
+}
+
+/// A rules opt-in. Two of these now sit on the start screen, so the panel, the checkbox
+/// and — importantly — the accessibility shape are shared rather than written twice.
+struct RulesCheckbox: View {
+    @Binding var isOn: Bool
+    let title: String
+    let detail: String
+    let hint: String
+
+    var body: some View {
         Button {
             withAnimation(.easeOut(duration: 0.18)) { isOn.toggle() }
             Haptics.selection()
@@ -172,10 +204,10 @@ struct WildcardRulesToggle: View {
                 HStack(alignment: .top, spacing: 12) {
                     checkbox
                     VStack(alignment: .leading, spacing: 3) {
-                        Text("Wildcard rules")
+                        Text(title)
                             .font(.system(.callout, design: .serif).weight(.semibold))
                             .foregroundStyle(Palette.ink)
-                        Text("Golden Pineapple, Banana Split, Tropical Smoothie, Blenderama.")
+                        Text(detail)
                             .font(.system(size: 11, design: .serif))
                             .foregroundStyle(Palette.inkSoft)
                             .multilineTextAlignment(.leading)
@@ -188,8 +220,8 @@ struct WildcardRulesToggle: View {
         }
         .buttonStyle(.plain)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Wildcard rules")
-        .accessibilityHint("Adds four extra rules, including two ways to win outright")
+        .accessibilityLabel(title)
+        .accessibilityHint(hint)
         .accessibilityAddTraits(isOn ? [.isButton, .isSelected] : .isButton)
         .accessibilityValue(isOn ? "on" : "off")
     }

@@ -91,7 +91,8 @@ public struct CPUPlayer: Sendable {
         scored.reserveCapacity(moves.count)
 
         for move in moves {
-            guard let transition = try? RulesEngine.apply(move, to: state) else { continue }
+            guard let transition = try? RulesEngine.apply(move, to: state, battles: .expected)
+            else { continue }
             scored.append((move, Evaluation.score(transition.state, for: player, weights: weights)))
         }
         guard let best = scored.map(\.value).max() else { return moves[0] }
@@ -204,7 +205,8 @@ private struct Search {
         var best: Result?
 
         for move in moves {
-            guard let transition = try? RulesEngine.apply(move, to: state) else { continue }
+            guard let transition = try? RulesEngine.apply(move, to: state, battles: .expected)
+            else { continue }
             let value = negamaxed(transition.state, depth: depth - 1, alpha: alpha, beta: beta)
             if timedOut { return nil }
             if best == nil || value > best!.value {
@@ -248,7 +250,8 @@ private struct Search {
         var best = maximizing ? Int.min : Int.max
 
         for move in ordered(moves, in: state) {
-            guard let transition = try? RulesEngine.apply(move, to: state) else { continue }
+            guard let transition = try? RulesEngine.apply(move, to: state, battles: .expected)
+            else { continue }
             let value = negamaxed(transition.state, depth: depth - 1, alpha: alpha, beta: beta)
             if timedOut { return best == Int.min || best == Int.max ? 0 : best }
 

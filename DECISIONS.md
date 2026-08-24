@@ -91,6 +91,24 @@ game. Both players' runs are dead by a median of turn 43 in Medium self-play, no
 survived 24 matches, and the tracker had to stop announcing "countered" because it became
 the normal state of every match.
 
+**Blender battle dice come from the position, and the CPU searches without them.**
+*Charles, 23 Aug 2026 — `rulesVersion 16`, schema 15.* Two constraints pull against each
+other here. `RulesEngine.apply` must be a pure function of (action, state) or two devices
+desynchronise the first time a blender attacks — so the dice are derived from
+`positionKey`. But a deterministic roll is a *readable* roll, and a searching CPU would
+have picked only battles it had already won.
+
+`BattleResolution` splits the two: `.dice` for the real game, `.expected` for the CPU's
+search, which replaces both dice with the same constant so they cancel and the CPU weighs
+the battle on standing fruit plus the attacker's bonus. Pinned by a test asserting the
+search never sees two different dice.
+
+**Match creation moved onto a `MatchOptions` value.** Four settings — rule set, board
+arrangement, edges, battles — were being threaded one at a time through the service
+protocol, both implementations, the lobby view model and the home screen. That is four
+places to drop one, and the compiler only catches it at the ends. One struct now carries
+them.
+
 **The Golden Pineapple is counted, not remembered.** *Charles, 23 Aug 2026 —
 `rulesVersion 15`, schema 14.* "Whenever there is one pineapple left it is always a golden
 pineapple" is a statement about the position, so it is implemented as one:

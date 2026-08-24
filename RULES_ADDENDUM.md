@@ -53,6 +53,70 @@ already hands the attacker a free kill at no cost to itself; adding a second mov
 made first blood close to decisive. Removing it dropped the measured first-kill win rate
 from **88% to 60%** at Medium — see §6.
 
+### Blender battles (optional) — a collision fought over, not simply won
+
+*Rules 16.* A checkbox on the start screen, off by default, independent of the wildcard
+rules and of the board settings.
+
+> A blender running into an **enemy** blender fights for the square. Each player totals
+> the value of the fruit they still have **standing on the board** — blended fruit is
+> gone, delivered fruit has left, and a wildcard banana waiting off-board to return does
+> not count. The attacker adds **+2** for going in. Each player rolls one six-sided die.
+> The higher total takes the other player's blender.
+
+A failed attack therefore costs the attacker their own blender, and the defender holds the
+square it was already standing on rather than advancing.
+
+**Two things the brief left open, decided here.**
+
+*Ties go to the attacker.* "Highest total wins" says nothing about a draw, and a battle
+has to end with exactly one blender gone — the two cannot share a square. The explicit +2
+says the design means attacking to be favoured, and it matches what a collision did before
+battles existed. This is not a technicality: **ties are 10% of all battles measured** (23
+of 230), so a defender-wins-ties rule would take the attacker's success rate from 92% to
+82%. Worth a second look if that reads as too generous.
+
+*Running into your own blender is not a battle.* There is no second player to roll
+against, so it destroys outright, exactly as before.
+
+**The dice are derived from the position, and that needed handling.** `RulesEngine.apply`
+is a pure function, and it has to stay one: if two devices computed different battles from
+the same move an online match would fork the moment a blender attacked. So both dice come
+from `positionKey`, salted per side and per square.
+
+That creates a second problem. A CPU searching ahead would read the roll *before* deciding
+whether to attack, and would then only ever pick battles it had already won. So `apply`
+takes a `BattleResolution`: the real game rolls dice, and the CPU's search replaces both
+dice with the same constant, which cancels and leaves the comparison as standing fruit
+plus the bonus — the part it can legitimately weigh. A test asserts the search never sees
+two different dice.
+
+**Measured, 30 Medium matches per combination:**
+
+| Battles | Rules | Outcome | Stalls | Median | Battles fought | Attacker won | First mover |
+|---|---|---|---|---|---|---|---|
+| off | standard | 29 score, 1 draw | 0 | 78 | — | — | 72% |
+| off | wildcard | 18 score, 7 Split | 5 | 86 | — | — | 80% |
+| on | standard | 28 score, 1 draw | 1 | 74 | 105 | 89% | 64% |
+| on | wildcard | 24 score, 3 Split | 3 | 84 | 125 | 95% | **100%** |
+
+The difficulty ladder holds at 12/12 with battles on.
+
+Two things to read off that.
+
+**The attacker wins 92% overall, and mostly not because of the dice.** The median battle
+is fought with the fruit totals *level* — gap of exactly the +2 — because a CPU that
+cannot see the roll attacks when it is not behind. On level fruit, +2 against a die each
+wins about five times in six. The rule therefore works less like a coin flip and more like
+a **deterrent against attacking while behind on fruit**, which is a real strategic
+addition, but anyone expecting frequent upsets will not find them at +2.
+
+**First-mover advantage rises rather than falls.** It was already high (72–80%); with
+battles on in wildcard, the player who moved first won all 27 decided matches. Winning the
+first battle compounds — a blender ahead means more attacks, which means more blenders
+ahead. Lowering the +2, or giving ties to the defender, are the two dials that would damp
+it.
+
 ### Golden Pineapple (wildcard) — a count, not a history
 
 > Whenever a player has exactly **one** pineapple left, that pineapple is golden. It does

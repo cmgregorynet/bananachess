@@ -122,6 +122,17 @@ Independently of the arrangement, the board's edges can be walls or can join up:
 the fruit, not to the machines chasing it. Joined edges are drawn as a dashed amber seam,
 so a legal-move dot on the far side of the board has something explaining it.
 
+## Blender battles
+
+Optional, off by default. With them on, a blender running into an enemy blender fights for
+the square: each player totals the value of the fruit they still have standing, the
+attacker adds two, and both roll a die. The higher total takes the other player's blender,
+so a failed attack costs you your own.
+
+The dice are derived from the position so both devices in an online match settle a battle
+identically — and the CPU searches with the dice removed, so it cannot pick only the
+battles it has already won.
+
 ## Building and releasing
 
 Xcode 26.5, iOS 18 deployment target, iPhone only. `Engine/` is a local Swift package

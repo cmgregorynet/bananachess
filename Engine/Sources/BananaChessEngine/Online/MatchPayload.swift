@@ -19,7 +19,8 @@ public struct MatchPayload: Codable, Sendable, Hashable {
     /// 12 — a match carries the board arrangement it was dealt.
     /// 13 — and which of its edges join up.
     /// 14 — the Golden Pineapple is read off the board, not recorded.
-    public static let currentSchemaVersion = 14
+    /// 15 — a match says whether blenders fight for a square or simply take it.
+    public static let currentSchemaVersion = 15
 
     public let schemaVersion: Int
     public let rulesVersion: Int
@@ -48,18 +49,17 @@ public struct MatchPayload: Codable, Sendable, Hashable {
     public static func newMatch(
         id: String,
         startingPlayer: PlayerID = .one,
-        ruleSet: RuleSet = .standard,
-        boardSetup: BoardSetup = .standard,
-        boardWrap: BoardWrap = .flat
+        options: MatchOptions = MatchOptions()
     ) -> MatchPayload {
         MatchPayload(
             matchID: id,
             moveNumber: 0,
             state: GameSetup.newGame(
                 startingPlayer: startingPlayer,
-                ruleSet: ruleSet,
-                boardSetup: boardSetup,
-                boardWrap: boardWrap
+                ruleSet: options.ruleSet,
+                boardSetup: options.boardSetup,
+                boardWrap: options.boardWrap,
+                blenderBattles: options.blenderBattles
             )
         )
     }

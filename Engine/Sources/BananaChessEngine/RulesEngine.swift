@@ -56,12 +56,16 @@ public enum RulesEngine {
     ///      takes any fruit, whoever grew it.
     /// 14 — boards may join their edges, and blenders may never cross one.
     /// 15 — a player's last pineapple is golden however the other one left.
-    public static let rulesVersion = 15
+    /// 16 — optional blender battles: a collision is fought over, not simply won.
+    public static let rulesVersion = 16
 
     /// Points it costs to put a destroyed blender back on its spawn, which also takes
     /// the whole turn. Scores may go negative paying it — there is no affordability
     /// check, deliberately.
     public static let blenderRestoreCost = 3
+
+    /// What a blender adds to its side of a battle for being the one going in.
+    public static let battleAttackerBonus = 2
 
     /// What completing a Tropical Smoothie pays its maker, once per match.
     public static let smoothieAward = 3
@@ -216,8 +220,12 @@ public enum RulesEngine {
     }
 
     /// Convenience for the common case.
-    public static func apply(_ move: Move, to state: GameState) throws -> Transition {
-        try apply(.move(move), to: state)
+    public static func apply(
+        _ move: Move,
+        to state: GameState,
+        battles: BattleResolution = .dice
+    ) throws -> Transition {
+        try apply(.move(move), to: state, battles: battles)
     }
 
     /// Applies one validated action and returns the resulting state plus the ordered
@@ -225,7 +233,11 @@ public enum RulesEngine {
     /// destination resolves, then delivery. The turn then advances, and anything due
     /// back — a delivered banana, a blender whose smoothie blackout has run out — returns
     /// before the next player can pick a piece.
-    public static func apply(_ action: GameAction, to state: GameState) throws -> Transition {
+    public static func apply(
+        _ action: GameAction,
+        to state: GameState,
+        battles: BattleResolution = .dice
+    ) throws -> Transition {
         try validate(action, in: state)
 
         var next = state
@@ -245,8 +257,14 @@ public enum RulesEngine {
 
             if piece.isBlender {
                 if let occupant, occupant.isBlender {
-                    destroy(occupant, by: piece, at: move.destination, in: &next, events: &events)
-                    next.setPosition(move.destination, for: piece.id)
+                    resolveCollision(
+                        attacker: piece,
+                        defender: occupant,
+                        at: move.destination,
+                        battles: battles,
+                        in: &next,
+                        events: &events
+                    )
                 } else {
                     if let occupant {
                         blend(occupant, at: move.destination, blendedBy: piece.owner, in: &next, events: &events)
@@ -306,6 +324,86 @@ public enum RulesEngine {
 
     /// A blender that runs into another destroys it outright and takes the square. That
     /// is the whole of it: the attacker gains position and tempo, not a second move.
+    /// Settles a blender running into another: a battle if the match is playing them,
+    /// otherwise the plain kill it has always been.
+    ///
+    /// A battle is only ever between two *players*, so running into one of your own
+    /// blenders still destroys it outright — there is nobody to roll against.
+    private static func resolveCollision(
+        attacker: Piece,
+        defender: Piece,
+        at square: Position,
+        battles: BattleResolution,
+        in state: inout GameState,
+        events: inout [GameEvent]
+    ) {
+        guard state.blenderBattles, defender.owner != attacker.owner else {
+            destroy(defender, by: attacker, at: square, in: &state, events: &events)
+            state.setPosition(square, for: attacker.id)
+            return
+        }
+
+        let report = battleReport(
+            attacker: attacker,
+            defender: defender,
+            at: square,
+            battles: battles,
+            in: state
+        )
+        events.append(.blenderBattle(report, at: square))
+
+        if report.attackerWins {
+            destroy(defender, by: attacker, at: square, in: &state, events: &events)
+            state.setPosition(square, for: attacker.id)
+        } else {
+            // The attack failed: the attacker is the one that leaves, and the defender
+            // holds the square it was already standing on.
+            destroy(attacker, by: defender, at: square, in: &state, events: &events)
+        }
+    }
+
+    /// Both dice come from the position itself, so two devices given the same move
+    /// compute the same battle. Salted differently per side so the two rolls are not the
+    /// same number, and salted with the square so two battles in one position differ.
+    private static func battleReport(
+        attacker: Piece,
+        defender: Piece,
+        at square: Position,
+        battles: BattleResolution,
+        in state: GameState
+    ) -> BattleReport {
+        let attackerRoll: Int
+        let defenderRoll: Int
+        switch battles {
+        case .dice:
+            let base = state.positionKey
+                &+ UInt64(bitPattern: Int64(square.row &* Board.size &+ square.column))
+            attackerRoll = die(base &+ 0x9E37_79B9)
+            defenderRoll = die(base &+ 0x85EB_CA6B)
+        case .expected:
+            // Any equal pair does: being the same on both sides it cancels, leaving the
+            // comparison as standing fruit plus the attacker's bonus against standing
+            // fruit. Four is the rounded mean of a die, so the totals the CPU reasons
+            // about are at least the right size.
+            attackerRoll = 4
+            defenderRoll = 4
+        }
+
+        return BattleReport(
+            attacker: attacker.owner,
+            attackerFruit: state.fruitStandingValue(for: attacker.owner),
+            attackerBonus: battleAttackerBonus,
+            attackerRoll: attackerRoll,
+            defenderFruit: state.fruitStandingValue(for: defender.owner),
+            defenderRoll: defenderRoll
+        )
+    }
+
+    private static func die(_ seed: UInt64) -> Int {
+        var generator = SeededGenerator(seed: seed)
+        return Int(generator.next() % 6) + 1
+    }
+
     private static func destroy(
         _ victim: Piece,
         by attacker: Piece,
