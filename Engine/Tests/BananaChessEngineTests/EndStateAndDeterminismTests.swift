@@ -171,3 +171,109 @@ struct DeterminismTests {
         #expect(state.positionKey != scored.positionKey)
     }
 }
+
+@Suite("Repetition")
+struct RepetitionTests {
+    /// Two blenders far enough apart to shuffle without ever meeting, and a fruit each so
+    /// the match does not end for lack of one.
+    private func shuffleBoard() -> (state: GameState, mine: PieceID, theirs: PieceID) {
+        var builder = BoardBuilder()
+        let mine = builder.blender(.one, at: position(3, 3), home: position(5, 1))
+        let theirs = builder.blender(.two, at: position(0, 0), home: position(0, 4))
+        _ = builder.fruit(.banana, .one, at: position(5, 0))
+        _ = builder.fruit(.banana, .two, at: position(0, 5))
+        return (builder.state(), mine, theirs)
+    }
+
+    @Test("A shuffle is stopped on the lap that would repeat a third time")
+    func aShuffleCannotGoRoundAThirdTime() throws {
+        let board = shuffleBoard()
+        var state = board.state
+        let lap = [
+            (board.mine, position(2, 2)), (board.theirs, position(1, 1)),
+            (board.mine, position(3, 3)), (board.theirs, position(0, 0)),
+        ]
+
+        // One full lap puts every arrangement on the board for a second time.
+        for (piece, destination) in lap {
+            state = try RulesEngine.apply(state.move(piece, to: destination), to: state).state
+        }
+
+        // The second lap is fine right up until the move that closes it.
+        for (piece, destination) in lap.dropLast() {
+            state = try RulesEngine.apply(state.move(piece, to: destination), to: state).state
+        }
+
+        let closing = state.move(board.theirs, to: position(0, 0))
+        #expect(!RulesEngine.legalMoves(in: state).contains(closing), "not offered")
+        #expect(throws: RulesError.wouldRepeatPosition) {
+            try RulesEngine.apply(closing, to: state)
+        }
+        // And the player is not stuck: the other three directions are still there.
+        #expect(!RulesEngine.legalMoves(in: state).isEmpty)
+    }
+
+    /// The point of keying on the arrangement rather than the whole position. Every
+    /// unbounded loop measured in this game bled points while the board went round, so a
+    /// key that included the score would have seen a new position every lap.
+    @Test("The arrangement key ignores the scores")
+    func theKeyIgnoresScores() {
+        var builder = BoardBuilder()
+        _ = builder.blender(.one, at: position(3, 3), home: position(5, 1))
+        _ = builder.fruit(.banana, .two, at: position(1, 1))
+        let level = builder.state(scores: Scores(one: 0, two: 0))
+        let lopsided = builder.state(scores: Scores(one: -400, two: 12))
+
+        #expect(level.boardKey == lopsided.boardKey)
+        #expect(level.positionKey != lopsided.positionKey, "the full position key still cares")
+    }
+
+    @Test("A fresh match already counts the arrangement it starts in")
+    func theOpeningCountsItself() {
+        let state = GameSetup.newGame()
+        #expect(state.boardHistory == [state.boardKey])
+        #expect(state.timesSeen(state.boardKey) == 1)
+    }
+
+    @Test("Buying a blender back is subject to the rule too")
+    func restoresAreCheckedAsWell() throws {
+        // A restore is an action like any other, so it goes through the same gate.
+        var builder = BoardBuilder()
+        let lost = builder.destroyedBlender(.one, home: position(5, 1))
+        _ = builder.blender(.one, at: position(5, 4), home: position(5, 4))
+        _ = builder.fruit(.banana, .one, at: position(4, 0))
+        _ = builder.fruit(.banana, .two, at: position(1, 1))
+        let state = builder.state()
+
+        let restore = GameAction.restoreBlender(pieceID: lost, at: position(5, 1))
+        #expect(RulesEngine.legalActions(in: state).contains(restore), "available the first time")
+        #expect(!RulesEngine.wouldRepeat(restore, in: state))
+    }
+
+    @Test("Matches finish on every board and rule set", .timeLimit(.minutes(5)))
+    func nothingRunsForever() {
+        for setup in BoardSetup.allCases {
+            for wrap in BoardWrap.allCases {
+                for seed in UInt64(1)...3 {
+                    var state = GameSetup.newGame(
+                        startingPlayer: seed.isMultiple(of: 2) ? .one : .two,
+                        ruleSet: .wildcard, boardSetup: setup, boardWrap: wrap,
+                        blenderBattles: seed.isMultiple(of: 2), seed: seed
+                    )
+                    let one = CPUPlayer(difficulty: .easy, seed: seed)
+                    let two = CPUPlayer(difficulty: .easy, seed: seed &* 7 &+ 3)
+                    while !state.status.isOver, state.turnNumber < 2_000 {
+                        let cpu = state.activePlayer == .one ? one : two
+                        guard let action = cpu.selectAction(in: state),
+                              let result = try? RulesEngine.apply(action, to: state) else { break }
+                        state = result.state
+                    }
+                    #expect(
+                        state.status.isOver,
+                        "\(setup)/\(wrap) seed \(seed) was still going after \(state.turnNumber) turns"
+                    )
+                }
+            }
+        }
+    }
+}

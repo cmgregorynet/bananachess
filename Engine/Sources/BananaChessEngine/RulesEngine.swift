@@ -11,6 +11,7 @@ public enum RulesError: Error, Hashable, LocalizedError {
     case blenderReturningOnItsOwn(PieceID)
     case notASpawnSquare(Position)
     case spawnOccupied(PieceID)
+    case wouldRepeatPosition
 
     public var errorDescription: String? {
         switch self {
@@ -24,6 +25,8 @@ public enum RulesError: Error, Hashable, LocalizedError {
         case .blenderReturningOnItsOwn: "That blender is coming back on its own."
         case .notASpawnSquare: "A blender can only come back on one of your spawns."
         case .spawnOccupied: "Something is standing on that blender's spawn."
+        case .wouldRepeatPosition:
+            "That would put the board back where it has already been twice."
         }
     }
 }
@@ -59,12 +62,23 @@ public enum RulesEngine {
     /// 16 — optional blender battles: a collision is fought over, not simply won.
     /// 17 — battles count fruit at half value, the attacker's bonus is one, and a tie
     ///      goes to the defender.
-    public static let rulesVersion = 17
+    /// 18 — a move that would stand the board in the same arrangement a third time is
+    ///      not available.
+    public static let rulesVersion = 18
 
     /// Points it costs to put a destroyed blender back on its spawn, which also takes
     /// the whole turn. Scores may go negative paying it — there is no affordability
     /// check, deliberately.
     public static let blenderRestoreCost = 3
+
+    /// How many times one arrangement may stand on the board. A move that would make an
+    /// arrangement happen for the third time is simply not available to that player.
+    ///
+    /// This is what finally bounds a match. Before it, a pair of blenders with nothing
+    /// better to do could trade squares forever, and self-play measured matches that were
+    /// still going after a thousand turns; the previous fixes were all to the CPU's
+    /// judgement, which left a human free to do it to another human.
+    public static let repetitionLimit = 3
 
     /// What a blender adds to its side of a battle for being the one going in.
     ///
@@ -85,21 +99,46 @@ public enum RulesEngine {
 
     // MARK: - Legal moves
 
+    /// Whether this action would put the board into an arrangement that has already
+    /// stood twice — the third occurrence being the one the rule forbids.
+    ///
+    /// Answered by playing the action out, because a turn does more than move one piece:
+    /// bananas come home, blenders come back, and the turn changes hands, all of which
+    /// are part of the arrangement. The simulation runs with the rule switched off, which
+    /// is what stops this from asking itself the same question forever.
+    static func wouldRepeat(_ action: GameAction, in state: GameState) -> Bool {
+        guard let next = try? apply(action, to: state, enforcingRepetition: false) else {
+            return false
+        }
+        return state.timesSeen(next.state.boardKey) >= repetitionLimit - 1
+    }
+
     public static func legalMoves(in state: GameState) -> [Move] {
         legalMoves(for: state.activePlayer, in: state)
     }
 
-    public static func legalMoves(for player: PlayerID, in state: GameState) -> [Move] {
+    public static func legalMoves(
+        for player: PlayerID,
+        in state: GameState,
+        enforcingRepetition: Bool = true
+    ) -> [Move] {
         guard !state.status.isOver else { return [] }
         let occupancy = Occupancy(state)
         return state.pieces(ownedBy: player)
             .flatMap { legalMoves(for: $0, in: state, occupancy: occupancy) }
+            .filter { !enforcingRepetition || !wouldRepeat(.move($0), in: state) }
             .sorted()
     }
 
-    public static func legalMoves(for pieceID: PieceID, in state: GameState) -> [Move] {
+    public static func legalMoves(
+        for pieceID: PieceID,
+        in state: GameState,
+        enforcingRepetition: Bool = true
+    ) -> [Move] {
         guard !state.status.isOver, let piece = state.piece(with: pieceID) else { return [] }
-        return legalMoves(for: piece, in: state, occupancy: Occupancy(state)).sorted()
+        return legalMoves(for: piece, in: state, occupancy: Occupancy(state))
+            .filter { !enforcingRepetition || !wouldRepeat(.move($0), in: state) }
+            .sorted()
     }
 
     static func legalMoves(for piece: Piece, in state: GameState, occupancy: Occupancy) -> [Move] {
@@ -181,6 +220,13 @@ public enum RulesEngine {
         }
     }
 
+    /// Public legality includes the repetition rule; the engine's own internal
+    /// simulations switch it off so that asking the question does not ask it again.
+    private static func validateRepetition(_ action: GameAction, in state: GameState) throws {
+        guard wouldRepeat(action, in: state) else { return }
+        throw RulesError.wouldRepeatPosition
+    }
+
     public static func validate(_ move: Move, in state: GameState) throws {
         guard !state.status.isOver else { throw RulesError.gameOver }
         guard let piece = state.piece(with: move.pieceID) else {
@@ -206,14 +252,21 @@ public enum RulesEngine {
 
     /// Every action the active player may take: moves, plus any blender of theirs that
     /// can be put back onto a clear spawn.
-    public static func legalActions(in state: GameState) -> [GameAction] {
+    public static func legalActions(
+        in state: GameState,
+        enforcingRepetition: Bool = true
+    ) -> [GameAction] {
         guard !state.status.isOver else { return [] }
 
-        var actions = legalMoves(in: state).map(GameAction.move)
+        var actions = legalMoves(
+            for: state.activePlayer, in: state, enforcingRepetition: enforcingRepetition
+        ).map(GameAction.move)
         let spawns = spawnSquares(ownedBy: state.activePlayer, in: state)
         for blender in state.destroyedBlenders(ownedBy: state.activePlayer) where blender.needsBuyingBack {
             for spawn in spawns where state.piece(at: spawn) == nil {
-                actions.append(.restoreBlender(pieceID: blender.id, at: spawn))
+                let restore = GameAction.restoreBlender(pieceID: blender.id, at: spawn)
+                if enforcingRepetition, wouldRepeat(restore, in: state) { continue }
+                actions.append(restore)
             }
         }
         return actions.sorted()
@@ -230,9 +283,12 @@ public enum RulesEngine {
     public static func apply(
         _ move: Move,
         to state: GameState,
-        battles: BattleResolution = .dice
+        battles: BattleResolution = .dice,
+        enforcingRepetition: Bool = true
     ) throws -> Transition {
-        try apply(.move(move), to: state, battles: battles)
+        try apply(
+            .move(move), to: state, battles: battles, enforcingRepetition: enforcingRepetition
+        )
     }
 
     /// Applies one validated action and returns the resulting state plus the ordered
@@ -243,9 +299,11 @@ public enum RulesEngine {
     public static func apply(
         _ action: GameAction,
         to state: GameState,
-        battles: BattleResolution = .dice
+        battles: BattleResolution = .dice,
+        enforcingRepetition: Bool = true
     ) throws -> Transition {
         try validate(action, in: state)
+        if enforcingRepetition { try validateRepetition(action, in: state) }
 
         var next = state
         var events: [GameEvent] = []
@@ -290,7 +348,11 @@ public enum RulesEngine {
         next.history.append(action)
         announceGoldenPineapples(since: state, in: next, events: &events)
         recordScoringTurnForWildcards(by: state.activePlayer, from: state.scores, in: &next)
-        finishTurn(in: &next, events: &events)
+        finishTurn(in: &next, events: &events, enforcingRepetition: enforcingRepetition)
+        // Recorded last, once the turn has actually changed hands: the arrangement
+        // includes whose move it is, so counting it any earlier would file it under
+        // the wrong player and the rule would never match anything.
+        next.recordArrangement()
         return Transition(state: next, events: events)
     }
 
@@ -622,7 +684,18 @@ public enum RulesEngine {
 
     // MARK: - Turn and end state
 
-    private static func finishTurn(in state: inout GameState, events: inout [GameEvent]) {
+    /// `enforcingRepetition` is threaded all the way down to the skip check, and that
+    /// is the whole reason it exists. Deciding whether the next player has a move is
+    /// itself a legality question, so a simulated turn that asked it *with* the rule
+    /// on would simulate another turn to answer it, for ever. Inside a simulation the
+    /// skip check therefore ignores repetition: it can only differ in the rare case
+    /// where every one of a player's moves is banned, and it only affects whose turn
+    /// it is in a position being weighed rather than one being played.
+    private static func finishTurn(
+        in state: inout GameState,
+        events: inout [GameEvent],
+        enforcingRepetition: Bool
+    ) {
         // Alternate victories win outright, so they are checked before anything else
         // gets a chance to happen.
         if let win = wildcardWin(in: state) {
@@ -647,10 +720,13 @@ public enum RulesEngine {
         }
 
         let opponent = state.activePlayer.opponent
-        if !legalActions(for: opponent, in: state).isEmpty {
+        if !legalActions(for: opponent, in: state, enforcingRepetition: enforcingRepetition)
+            .isEmpty {
             state.activePlayer = opponent
             events.append(.turnChanged(active: opponent))
-        } else if !legalActions(for: state.activePlayer, in: state).isEmpty {
+        } else if !legalActions(
+            for: state.activePlayer, in: state, enforcingRepetition: enforcingRepetition
+        ).isEmpty {
             // Not in the PRD, but the engine has to answer it: a player with nothing
             // legal to do is skipped rather than deadlocking the match.
             events.append(.turnPassed(skipped: opponent))
@@ -674,10 +750,14 @@ public enum RulesEngine {
 
     /// Actions available to a player who is not necessarily the active one, used by the
     /// skip check.
-    private static func legalActions(for player: PlayerID, in state: GameState) -> [GameAction] {
+    private static func legalActions(
+        for player: PlayerID,
+        in state: GameState,
+        enforcingRepetition: Bool = true
+    ) -> [GameAction] {
         var probe = state
         probe.activePlayer = player
-        return legalActions(in: probe)
+        return legalActions(in: probe, enforcingRepetition: enforcingRepetition)
     }
 
     /// The match ends the moment *either* player runs out of fruit — not when the board

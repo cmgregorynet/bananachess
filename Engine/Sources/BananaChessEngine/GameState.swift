@@ -43,6 +43,10 @@ public struct GameState: Hashable, Codable, Sendable {
     /// Which edges of the board join up. Unlike `boardSetup` this is read on every turn:
     /// it decides which moves exist.
     public var boardWrap: BoardWrap
+    /// Every arrangement this match has stood in, including the one on the board now.
+    /// A move that would make an arrangement happen for a third time is not allowed —
+    /// see `RulesEngine.repetitionLimit`.
+    public private(set) var boardHistory: [UInt64]
     /// Whether a blender running into another fights for it rather than simply taking
     /// it. Read on every turn, like `boardWrap`.
     public var blenderBattles: Bool
@@ -61,6 +65,7 @@ public struct GameState: Hashable, Codable, Sendable {
         boardSetup: BoardSetup = .standard,
         boardWrap: BoardWrap = .flat,
         blenderBattles: Bool = false,
+        boardHistory: [UInt64]? = nil,
         wildcards: WildcardProgress = WildcardProgress()
     ) {
         self.pieces = pieces.sorted { $0.id < $1.id }
@@ -74,6 +79,10 @@ public struct GameState: Hashable, Codable, Sendable {
         self.boardWrap = boardWrap
         self.blenderBattles = blenderBattles
         self.wildcards = wildcards
+        // The history always contains the position it describes, so a freshly built state
+        // is already self-consistent and no caller has to remember to seed it.
+        self.boardHistory = []
+        self.boardHistory = boardHistory ?? [boardKey]
     }
 
     // MARK: - Lookup
@@ -208,6 +217,42 @@ public struct GameState: Hashable, Codable, Sendable {
         }
     }
 
+    /// Deterministic digest of the *arrangement* — where every piece stands and whose
+    /// turn it is — and nothing else.
+    ///
+    /// Deliberately excludes the scores, which is what separates this from `positionKey`.
+    /// Every unbounded loop measured in this game bled points while the board went round:
+    /// spawn camping paid three a turn, blender trading paid three a side. A key that
+    /// included the score would see a brand new position each lap and never notice the
+    /// loop it exists to stop.
+    ///
+    /// Piece identity is not hashed either: `pieces` is kept sorted by id, so position in
+    /// the array already says which piece it is, and skipping the id strings keeps this
+    /// cheap enough to call once per candidate move.
+    public var boardKey: UInt64 {
+        var hash: UInt64 = 0xCBF2_9CE4_8422_2325
+        func mix(_ value: Int) {
+            withUnsafeBytes(of: Int64(value).littleEndian) {
+                for byte in $0 {
+                    hash ^= UInt64(byte)
+                    hash = hash &* 0x0000_0100_0000_01B3
+                }
+            }
+        }
+        for piece in pieces {
+            mix(piece.position?.row ?? -1)
+            mix(piece.position?.column ?? -1)
+            mix(piece.respawnTurn ?? 0)
+        }
+        mix(activePlayer == .one ? 1 : 2)
+        return hash
+    }
+
+    /// How many times this exact arrangement has already stood on the board.
+    public func timesSeen(_ key: UInt64) -> Int {
+        boardHistory.reduce(0) { $0 + ($1 == key ? 1 : 0) }
+    }
+
     /// Deterministic FNV-1a digest of everything that makes two positions the same
     /// position. Unlike `hashValue` this is stable across processes and devices, which
     /// is what the CPU's transposition table and the seeded Easy CPU both need.
@@ -240,6 +285,10 @@ public struct GameState: Hashable, Codable, Sendable {
     mutating func setPosition(_ position: Position?, for id: PieceID) {
         guard let index = pieces.firstIndex(where: { $0.id == id }) else { return }
         pieces[index].position = position
+    }
+
+    mutating func recordArrangement() {
+        boardHistory.append(boardKey)
     }
 
     mutating func setRespawnTurn(_ turn: Int?, for id: PieceID) {

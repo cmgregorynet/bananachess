@@ -53,6 +53,50 @@ already hands the attacker a free kill at no cost to itself; adding a second mov
 made first blood close to decisive. Removing it dropped the measured first-kill win rate
 from **88% to 60%** at Medium — see §6.
 
+### Repetition — what finally bounds a match
+
+*Rules 18.* A move that would put the board into an arrangement it has already stood in
+**twice** is not available to that player. Shuffling back and forth once is fine; the lap
+that would do it a third time is simply not offered.
+
+This closes the hole that every previous fix only worked around. Spawn camping, blender
+trading and the Blenderama beeline were all patched in the CPU's *judgement*, which left a
+human free to do the same thing to another human, and self-play still measured matches
+running past a thousand turns. It is now a rule, so nobody can do it.
+
+**The arrangement key ignores the scores, and that is the whole trick.** Every unbounded
+loop measured in this game bled points while the board went round — spawn camping paid
+three a turn, blender trading three a side. A key that included the score would have seen
+a brand new position every lap and never noticed. `GameState.boardKey` hashes where the
+pieces stand and whose turn it is, and nothing else. The full `positionKey`, which the
+CPU's transposition table uses, still includes the scores.
+
+**Asking the question means simulating the answer**, which is why `apply`, `finishTurn`
+and `legalActions` all carry an `enforcingRepetition` flag. Deciding whether a move
+repeats requires playing it out — and playing it out asks whether the next player has a
+legal move, which asks the same question again. Simulations run with the rule off, so a
+simulation never simulates. It recursed into a stack overflow twice before that was
+threaded all the way down.
+
+**Measured, 30 Medium matches for each of the three boards under both rule sets — 180
+matches:**
+
+| Board | Standard rules | Wildcard rules |
+|---|---|---|
+| Standard | 0 stalls, median 78, longest 112 | 0 stalls, median 86, longest 148 |
+| Blendy | 0 stalls, median 74, longest 124 | 0 stalls, median 117, longest 172 |
+| Random | 0 stalls, median 39, longest 86 | 0 stalls, median 21, longest 180 |
+
+**Nothing stalled anywhere**, against 5 of 30 in standard/wildcard before, and no match ran
+past 180 turns. CPU response is unaffected: Easy 1 ms a move, Medium 13 ms mean and 31 ms
+at worst, Hard unchanged inside its existing two-second cap.
+
+**The cost is payload size.** Every arrangement is remembered, so a match carries a growing
+list: 90 turns of wildcard play encodes to about 12.5 KB against Game Center's 64 KB
+limit. The longest match measured was 180 turns, which lands near 20 KB, so there is room —
+but it is the number to watch if matches ever get longer, and the rule itself is what keeps
+them short.
+
 ### Blender battles (optional) — a collision fought over, not simply won
 
 *Rules 16.* A checkbox on the start screen, off by default, independent of the wildcard

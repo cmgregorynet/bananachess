@@ -91,6 +91,23 @@ game. Both players' runs are dead by a median of turn 43 in Medium self-play, no
 survived 24 matches, and the tracker had to stop announcing "countered" because it became
 the normal state of every match.
 
+**Repetition is keyed on the arrangement, not the position.** *Charles, 29 Aug 2026 —
+`rulesVersion 18`, schema 16.* `boardKey` covers where the pieces stand and whose turn it
+is; `positionKey` keeps the scores for the transposition table. Keying repetition on the
+full position would have been useless: every loop this rule exists to stop was paying
+points every lap, so the "same" position never looked the same twice.
+
+**The `enforcingRepetition` flag is load-bearing, not a convenience.** Legality now depends
+on the position a move *produces*, so answering it means simulating the move — and the
+simulation's own turn-handover asks whether the next player has a legal move, which is the
+same question. Without an unenforced path threaded through `apply`, `finishTurn` and
+`legalActions`, it recurses until the stack goes. It did, twice, before the flag reached
+all three.
+
+**The board history is stored, not derived.** Replaying it from `history` would need the
+opening position, which a `.random` board does not carry — the arrangement travels in the
+state, not a seed. So the keys are stored, at roughly 20 bytes a turn.
+
 **The battle bonus and the tie rule are one dial, so they were tuned as one.**
 *Charles, 29 Aug 2026 — `rulesVersion 17`.* Bonus `B` with ties to the attacker is the
 same inequality as `B + 1` with ties to the defender, which means the two "open questions"
