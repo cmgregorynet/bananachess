@@ -457,15 +457,19 @@ struct BlenderBattleTests {
 
     @Test("An overwhelming attacker wins and takes the square")
     func aStrongAttackerWins() throws {
-        // 9 of fruit plus 2, against 1. No pair of dice can close eight points.
-        let f = fixture(mine: [.pineapple, .pineapple, .pineapple], theirs: [.banana])
+        // Twelve of fruit against one. Halved that is 6 against 0, and with the bonus the
+        // attacker's worst roll still beats the defender's best.
+        let f = fixture(
+            mine: [.pineapple, .pineapple, .pineapple, .pineapple],
+            theirs: [.banana]
+        )
         let result = try RulesEngine.apply(f.state.move(f.attacker, to: position(2, 2)), to: f.state)
 
         let report = try #require(result.events.battleReports.first)
         #expect(report.attacker == .one)
-        #expect(report.attackerFruit == 9)
+        #expect(report.attackerFruit == 6, "twelve of standing fruit, counted at half")
         #expect(report.attackerBonus == RulesEngine.battleAttackerBonus)
-        #expect(report.defenderFruit == 1)
+        #expect(report.defenderFruit == 0, "one point of fruit rounds down to nothing")
         #expect(report.attackerWins)
         #expect(result.state.isOffBoard(f.defender))
         #expect(result.state.square(of: f.attacker) == position(2, 2), "and moves in")
@@ -473,8 +477,12 @@ struct BlenderBattleTests {
 
     @Test("An overwhelmed attacker loses its own blender, and the defender does not move")
     func aWeakAttackerLosesItsOwn() throws {
-        // 1 plus 2, against 9. The attack cannot succeed on any roll.
-        let f = fixture(mine: [.banana], theirs: [.pineapple, .pineapple, .pineapple])
+        // 0 plus 1 against 6: the attacker's best roll ties the defender's worst, and a
+        // tie goes to the defender, so the attack cannot succeed on any roll.
+        let f = fixture(
+            mine: [.banana],
+            theirs: [.pineapple, .pineapple, .pineapple, .pineapple]
+        )
         let result = try RulesEngine.apply(f.state.move(f.attacker, to: position(2, 2)), to: f.state)
 
         let report = try #require(result.events.battleReports.first)
@@ -506,9 +514,45 @@ struct BlenderBattleTests {
 
         let result = try RulesEngine.apply(state.move(attacker, to: position(2, 2)), to: state)
         let report = try #require(result.events.battleReports.first)
-        #expect(report.attackerFruit == 3)
-        #expect(report.defenderFruit == 1)
-        #expect(result.state.isOffBoard(defender))
+        #expect(report.attackerFruit == 1, "3 standing, counted at half")
+        #expect(report.defenderFruit == 0, "1 standing, counted at half")
+        // Close enough that the dice decide it, which is the point of halving — so this
+        // asserts the right blender left rather than which one it was.
+        #expect(result.state.isOffBoard(report.attackerWins ? defender : attacker))
+    }
+
+    @Test("A tie goes to the defender")
+    func tiesGoToTheDefender() {
+        let tied = BattleReport(
+            attacker: .one,
+            attackerFruit: 3, attackerBonus: 1, attackerRoll: 2,
+            defenderFruit: 5, defenderRoll: 1
+        )
+        #expect(tied.attackerTotal == tied.defenderTotal)
+        #expect(!tied.attackerWins, "the attacker has to actually beat the total")
+        #expect(tied.winner == .two)
+    }
+
+    /// The bonus and the tie rule are one dial at half-step resolution, not two: a bonus
+    /// of B with ties to the attacker is the identical rule to B+1 with ties to the
+    /// defender. Pinned so that anyone retuning one remembers they are moving both.
+    @Test("The bonus and the tie rule are the same dial")
+    func bonusAndTieRuleAreOneDial() {
+        for gap in -3...3 {
+            for attackerRoll in 1...6 {
+                for defenderRoll in 1...6 {
+                    let report = BattleReport(
+                        attacker: .one,
+                        attackerFruit: gap, attackerBonus: 1, attackerRoll: attackerRoll,
+                        defenderFruit: 0, defenderRoll: defenderRoll
+                    )
+                    #expect(
+                        report.attackerWins == (gap + attackerRoll >= defenderRoll),
+                        "bonus 1 with ties to the defender should equal bonus 0 with ties to the attacker"
+                    )
+                }
+            }
+        }
     }
 
     @Test("Running into your own blender is not a battle — there is nobody to roll against")

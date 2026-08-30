@@ -64,7 +64,7 @@ struct HomeView: View {
                         isOn: $blenderBattles,
                         title: "Blender battles",
                         detail: "Blenders fight for a square instead of just taking it. "
-                            + "Your standing fruit, plus two for attacking, plus a die each.",
+                            + "Half your standing fruit, plus one for attacking, plus a die each.",
                         hint: "Blender collisions are decided by fruit on the board and a dice roll"
                     )
                     Spacer(minLength: 12)

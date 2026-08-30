@@ -91,6 +91,18 @@ game. Both players' runs are dead by a median of turn 43 in Medium self-play, no
 survived 24 matches, and the tracker had to stop announcing "countered" because it became
 the normal state of every match.
 
+**The battle bonus and the tie rule are one dial, so they were tuned as one.**
+*Charles, 29 Aug 2026 — `rulesVersion 17`.* Bonus `B` with ties to the attacker is the
+same inequality as `B + 1` with ties to the defender, which means the two "open questions"
+from the first cut were never independent. Settled at bonus 1 with ties to the defender —
+58% for the attacker on level fruit.
+
+Separately, fruit counts at **half** value in a battle. Twelve points of opening fruit
+against a die spanning five meant the fruit overruled the dice: a third of measured
+battles were decided before anyone rolled. Halving puts the two on the same scale, and
+every battle now turns on the roll. `GameState.battleStrength(for:)` is the halved value
+and `fruitStandingValue(for:)` the raw one — both named, so neither has to be inferred.
+
 **Blender battle dice come from the position, and the CPU searches without them.**
 *Charles, 23 Aug 2026 — `rulesVersion 16`, schema 15.* Two constraints pull against each
 other here. `RulesEngine.apply` must be a pure function of (action, state) or two devices

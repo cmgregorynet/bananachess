@@ -58,26 +58,21 @@ from **88% to 60%** at Medium — see §6.
 *Rules 16.* A checkbox on the start screen, off by default, independent of the wildcard
 rules and of the board settings.
 
-> A blender running into an **enemy** blender fights for the square. Each player totals
-> the value of the fruit they still have **standing on the board** — blended fruit is
-> gone, delivered fruit has left, and a wildcard banana waiting off-board to return does
-> not count. The attacker adds **+2** for going in. Each player rolls one six-sided die.
-> The higher total takes the other player's blender.
+> A blender running into an **enemy** blender fights for the square. Each player counts
+> **half** the value of the fruit they still have **standing on the board**, rounded down
+> — blended fruit is gone, delivered fruit has left, and a wildcard banana waiting
+> off-board to return does not count. The attacker adds **+1** for going in. Each player
+> rolls one six-sided die. The higher total takes the other player's blender, and a tie
+> goes to the defender.
 
 A failed attack therefore costs the attacker their own blender, and the defender holds the
 square it was already standing on rather than advancing.
 
-**Two things the brief left open, decided here.**
-
-*Ties go to the attacker.* "Highest total wins" says nothing about a draw, and a battle
-has to end with exactly one blender gone — the two cannot share a square. The explicit +2
-says the design means attacking to be favoured, and it matches what a collision did before
-battles existed. This is not a technicality: **ties are 10% of all battles measured** (23
-of 230), so a defender-wins-ties rule would take the attacker's success rate from 92% to
-82%. Worth a second look if that reads as too generous.
-
-*Running into your own blender is not a battle.* There is no second player to roll
+**Running into your own blender is not a battle.** There is no second player to roll
 against, so it destroys outright, exactly as before.
+
+**The half value, the +1 and the tie rule are all one balance decision**, arrived at by
+measurement — see the section below.
 
 **The dice are derived from the position, and that needed handling.** `RulesEngine.apply`
 is a pure function, and it has to stay one: if two devices computed different battles from
@@ -91,31 +86,48 @@ dice with the same constant, which cancels and leaves the comparison as standing
 plus the bonus — the part it can legitimately weigh. A test asserts the search never sees
 two different dice.
 
-**Measured, 30 Medium matches per combination:**
+**How the numbers were chosen.** The first cut — full fruit value, +2, ties to the
+attacker — measured at 89–95% attacker wins and pushed first-mover advantage in wildcard
+to **100%**. Two separate faults, needing two different dials.
 
-| Battles | Rules | Outcome | Stalls | Median | Battles fought | Attacker won | First mover |
+*The attacker's edge* is one dial, not two. A bonus of `B` with ties to the attacker is
+the **identical** rule to `B + 1` with ties to the defender, because `a + B >= d` and
+`a + B + 1 > d` are the same inequality. So the tie question and the bonus question are a
+single dial at half-step resolution. Exact chances at level fruit:
+
+| Bonus | Ties → attacker | Ties → defender |
+|---|---|---|
+| +0 | 58% | 42% |
+| +1 | 72% | **58%** ← chosen |
+| +2 | 83% (first cut) | 72% |
+| +3 | 92% | 83% |
+
+*Whether the dice matter at all* is a different dial: the ratio of the fruit scale to the
+die. A full opening board is **twelve** points of fruit against a die spanning **five**, so
+the fruit simply overruled it — across 230 measured battles a third were already decided
+before anyone rolled, and 60 were fought at a gap of five or more where no roll could
+change anything. Halving the fruit puts its spread (0–6) in the same range as the die.
+Counting fruit at half value makes the dice decide **every** battle.
+
+**Measured, 30 Medium matches per combination, after the change:**
+
+| Battles | Rules | Outcome | Stalls | Median | Fought | Attacker won | First mover |
 |---|---|---|---|---|---|---|---|
 | off | standard | 29 score, 1 draw | 0 | 78 | — | — | 72% |
 | off | wildcard | 18 score, 7 Split | 5 | 86 | — | — | 80% |
-| on | standard | 28 score, 1 draw | 1 | 74 | 105 | 89% | 64% |
-| on | wildcard | 24 score, 3 Split | 3 | 84 | 125 | 95% | **100%** |
+| on | standard | 29 score, 1 draw | 0 | 74 | 95 | 73% | 72% |
+| on | wildcard | 24 score, 4 Split | 2 | 89 | 194 | 78% | **35%** |
 
-The difficulty ladder holds at 12/12 with battles on.
+Against the first cut: attacker wins fell from 89–95% to **73–78%**, and first-mover
+advantage in wildcard fell from **100% to 35%** — battles no longer compound for whoever
+moves first, and in standard play the figure is now identical to playing without battles
+at all, meaning the rule has stopped distorting it. The difficulty ladder holds at 12/12.
 
-Two things to read off that.
-
-**The attacker wins 92% overall, and mostly not because of the dice.** The median battle
-is fought with the fruit totals *level* — gap of exactly the +2 — because a CPU that
-cannot see the roll attacks when it is not behind. On level fruit, +2 against a die each
-wins about five times in six. The rule therefore works less like a coin flip and more like
-a **deterrent against attacking while behind on fruit**, which is a real strategic
-addition, but anyone expecting frequent upsets will not find them at +2.
-
-**First-mover advantage rises rather than falls.** It was already high (72–80%); with
-battles on in wildcard, the player who moved first won all 27 decided matches. Winning the
-first battle compounds — a blender ahead means more attacks, which means more blenders
-ahead. Lowering the +2, or giving ties to the defender, are the two dials that would damp
-it.
+The attacker's 73–78% is above the 68% predicted from the old battle distribution, and the
+reason is worth noting: the CPU now fights a *different and larger* set of battles — 194
+in wildcard against 125 before — because fewer blenders die outright, so more collisions
+happen over a longer match. A prediction made over one distribution of battles does not
+survive changing which battles get fought.
 
 ### Golden Pineapple (wildcard) — a count, not a history
 

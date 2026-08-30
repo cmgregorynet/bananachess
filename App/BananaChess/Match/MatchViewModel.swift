@@ -316,15 +316,18 @@ final class MatchViewModel {
         animationTask?.cancel()
         animationTask = Task { [weak self] in
             guard let self else { return }
+            var previous: GameEvent?
             for event in events {
                 if Task.isCancelled { break }
                 self.spawnEffects(for: event)
+                let keepsPreviousFlash = self.flashSurvives(event, after: previous)
                 withAnimation(self.animation(for: event)) {
                     self.displayState = self.displayState.applying(event)
-                    self.flash = self.boardFlash(for: event)
+                    if !keepsPreviousFlash { self.flash = self.boardFlash(for: event) }
                 }
                 Haptics.play(for: event)
                 try? await Task.sleep(for: self.beat(for: event))
+                previous = event
             }
             guard !Task.isCancelled else { return }
             self.displayState = self.authoritativeState
@@ -333,6 +336,19 @@ final class MatchViewModel {
             self.persist()
             self.startCPUTurnIfNeeded()
         }
+    }
+
+    /// Whether an event should leave the label already on screen alone.
+    ///
+    /// A battle emits `blenderBattle` and then immediately `blenderDestroyed`, and the
+    /// second one's "Blender destroyed" would replace the arithmetic barely after it
+    /// appeared — which is exactly when the player wants to read it, and which also made
+    /// the whole thing depend on catching a 900ms window. After a battle the totals stay
+    /// up: they already say a blender was destroyed, and whose.
+    private func flashSurvives(_ event: GameEvent, after previous: GameEvent?) -> Bool {
+        guard case .blenderDestroyed = event, let previous else { return false }
+        if case .blenderBattle = previous { return true }
+        return false
     }
 
     private func animation(for event: GameEvent) -> Animation? {

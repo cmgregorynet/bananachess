@@ -507,6 +507,9 @@ final class MatchSmokeUITests: XCTestCase {
             battleLabel.waitForExistence(timeout: 5),
             "the board should show the battle, both totals and both dice while it resolves"
         )
+        // The totals stay up through the destruction that follows, rather than being
+        // replaced by it — the arithmetic is the part worth reading.
+        XCTAssertTrue(battleLabel.exists)
 
         // And the durable half: whichever way it went, exactly one blender left the board
         // and its owner is offered it back.

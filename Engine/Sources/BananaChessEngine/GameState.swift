@@ -115,6 +115,17 @@ public struct GameState: Hashable, Codable, Sendable {
         onBoardFruit(ownedBy: player).reduce(0) { $0 + $1.kind.baseValue }
     }
 
+    /// What that fruit is actually worth in a battle: **half** its value, rounded down.
+    ///
+    /// A full opening board is twelve points of fruit against a die that spans five, so
+    /// at full value the fruit simply overruled the dice — measured, a third of battles
+    /// were decided before either player rolled. Halving puts the fruit spread (0-6) in
+    /// the same range as the die, which is what makes the rule's own idea — the fruit you
+    /// still have standing backs you up — do work instead of steamroll.
+    public func battleStrength(for player: PlayerID) -> Int {
+        fruitStandingValue(for: player) / 2
+    }
+
     public func pineapples(ownedBy player: PlayerID) -> [Piece] {
         pieces.filter { $0.owner == player && $0.kind == .pineapple }
     }

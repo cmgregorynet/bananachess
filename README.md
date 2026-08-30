@@ -125,9 +125,9 @@ so a legal-move dot on the far side of the board has something explaining it.
 ## Blender battles
 
 Optional, off by default. With them on, a blender running into an enemy blender fights for
-the square: each player totals the value of the fruit they still have standing, the
-attacker adds two, and both roll a die. The higher total takes the other player's blender,
-so a failed attack costs you your own.
+the square: each player counts half the value of the fruit they still have standing, the
+attacker adds one, and both roll a die. The higher total takes the other player's blender —
+a tie goes to the defender — so a failed attack costs you your own.
 
 The dice are derived from the position so both devices in an online match settle a battle
 identically — and the CPU searches with the dice removed, so it cannot pick only the

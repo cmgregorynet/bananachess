@@ -1,9 +1,9 @@
 /// The full arithmetic of one blender battle, kept so the board can show its working.
 ///
 /// A battle is the optional alternative to a blender simply destroying whatever it runs
-/// into. Both sides count the value of the fruit they still have **standing on the
-/// board** — blended fruit is gone and delivered fruit has left, so neither counts — the
-/// attacker adds two for going in, and both roll a die.
+/// into. Both sides count **half** the value of the fruit they still have standing on the
+/// board — blended fruit is gone and delivered fruit has left, so neither counts — the
+/// attacker adds one for going in, and both roll a die.
 public struct BattleReport: Hashable, Codable, Sendable {
     public let attacker: PlayerID
     public let attackerFruit: Int
@@ -32,13 +32,17 @@ public struct BattleReport: Hashable, Codable, Sendable {
     public var attackerTotal: Int { attackerFruit + attackerBonus + attackerRoll }
     public var defenderTotal: Int { defenderFruit + defenderRoll }
 
-    /// A tie goes to the attacker.
+    /// A tie goes to the defender: the attacker has to actually beat the total.
     ///
     /// The rule says "highest total wins", which leaves a draw undefined, and a battle
-    /// has to end with exactly one blender gone — the two cannot share the square. The
-    /// attacker's `+2` says the design means attacking to be favoured, and attacker-wins
-    /// also matches what a blender collision did before battles existed.
-    public var attackerWins: Bool { attackerTotal >= defenderTotal }
+    /// has to end with exactly one blender gone — the two cannot share the square.
+    ///
+    /// Note this is not a separate dial from the bonus, it is the same one at half a
+    /// step: `bonus B` with ties to the attacker is the identical rule to `bonus B + 1`
+    /// with ties to the defender, since `a + B >= d` and `a + B + 1 > d` are the same
+    /// inequality. The pair chosen here — bonus 1, ties to the defender — puts the
+    /// attacker at 58% on level fruit.
+    public var attackerWins: Bool { attackerTotal > defenderTotal }
 
     public var winner: PlayerID { attackerWins ? attacker : defender }
 }
