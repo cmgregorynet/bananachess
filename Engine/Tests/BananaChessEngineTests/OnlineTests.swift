@@ -399,3 +399,110 @@ struct OnlineMatchServiceTests {
         }
     }
 }
+
+@Suite("Match links")
+struct MatchLinkTests {
+    private func playedOut(turns: Int) -> MatchPayload {
+        var state = GameSetup.newGame(ruleSet: .wildcard, boardSetup: .random, seed: 12)
+        let one = CPUPlayer(difficulty: .easy, seed: 3)
+        let two = CPUPlayer(difficulty: .easy, seed: 91)
+        while !state.status.isOver, state.turnNumber < turns {
+            let cpu = state.activePlayer == .one ? one : two
+            guard let action = cpu.selectAction(in: state),
+                  let result = try? RulesEngine.apply(action, to: state) else { break }
+            state = result.state
+        }
+        return MatchPayload(matchID: "abc", moveNumber: state.history.count, state: state)
+    }
+
+    @Test("A match survives the round trip through a universal link")
+    func universalLinkRoundTrip() throws {
+        let payload = playedOut(turns: 40)
+        let url = try MatchLink.url(for: payload, host: "bananachess.example")
+
+        #expect(url.scheme == "https")
+        #expect(url.host == "bananachess.example")
+        #expect(try MatchLink.payload(from: url) == payload)
+    }
+
+    @Test("And through the scheme-only link, which needs nothing hosted")
+    func schemeLinkRoundTrip() throws {
+        let payload = playedOut(turns: 40)
+        let url = try MatchLink.url(for: payload)
+
+        #expect(url.scheme == MatchLink.scheme)
+        #expect(try MatchLink.payload(from: url) == payload)
+    }
+
+    /// Every setting a match can be created with has to survive, or a link would quietly
+    /// change the game it was inviting someone into.
+    @Test("Every match setting survives the trip", arguments: BoardSetup.allCases)
+    func settingsSurvive(setup: BoardSetup) throws {
+        let payload = MatchPayload.newMatch(
+            id: "m",
+            options: MatchOptions(
+                ruleSet: .wildcard, boardSetup: setup, boardWrap: .all, blenderBattles: true
+            )
+        )
+        let decoded = try MatchLink.payload(from: try MatchLink.url(for: payload))
+
+        #expect(decoded.state.ruleSet == .wildcard)
+        #expect(decoded.state.boardSetup == setup)
+        #expect(decoded.state.boardWrap == .all)
+        #expect(decoded.state.blenderBattles)
+        #expect(decoded.state.pieces == payload.state.pieces, "including a random deal")
+        #expect(decoded.state.boardHistory == payload.state.boardHistory)
+    }
+
+    @Test("A link is short enough to send", arguments: [0, 40, 90])
+    func linksStaySendable(turns: Int) throws {
+        let url = try MatchLink.url(for: playedOut(turns: turns), host: "bananachess.example")
+        // Long for a link, short for a message. Well inside what Messages, Mail and every
+        // browser will carry, and inside Game Center's 64k besides.
+        #expect(url.absoluteString.count < 8_000, "\(turns) turns made \(url.absoluteString.count) chars")
+    }
+
+    @Test("Something that is not a match link is refused, not guessed at")
+    func rubbishIsRefused() {
+        for text in [
+            "https://bananachess.example/",
+            "https://bananachess.example/m/1/not-base64!!",
+            "https://bananachess.example/other/1/abc",
+            "bananachess://m/1/",
+        ] {
+            let url = URL(string: text)!
+            #expect(throws: (any Error).self) { try MatchLink.payload(from: url) }
+        }
+    }
+
+    @Test("A link from a newer format says so rather than mangling it")
+    func newerFormatIsNamed() throws {
+        let encoded = try MatchLink.encode(.newMatch(id: "m"))
+        let url = URL(string: "https://x.example/m/\(MatchLink.format + 1)/\(encoded)")!
+
+        #expect(throws: MatchLink.LinkError.unsupportedFormat(
+            found: MatchLink.format + 1, supported: MatchLink.format
+        )) {
+            try MatchLink.payload(from: url)
+        }
+    }
+
+    /// The payload's own guards still apply on top of the link's. A readable link that
+    /// cannot be played is a clearer failure than an unreadable one.
+    @Test("A link from an older rules build is refused by the payload, not the link")
+    func olderRulesAreRefusedByThePayload() throws {
+        let old = MatchPayload(
+            rulesVersion: RulesEngine.rulesVersion - 1,
+            matchID: "m",
+            moveNumber: 0,
+            state: GameSetup.newGame()
+        )
+        let url = try MatchLink.url(for: old)
+
+        #expect(throws: MatchCodecError.incompatibleRules(
+            found: RulesEngine.rulesVersion - 1, supported: RulesEngine.rulesVersion
+        )) {
+            try MatchLink.payload(from: url)
+        }
+    }
+}

@@ -14,11 +14,15 @@ struct HomeView: View {
     @State private var route: Route?
     @State private var isShowingRules = false
     @State private var isShowingCPUOptions = false
+    @State private var linkError: String?
 
     private enum Route: Hashable {
         case local
         case computer(CPUDifficulty, PlayerID)
         case online
+        /// A match arriving from, or leaving on, a link. The whole match travels in the
+        /// URL, so there is nothing to look up and nothing to wait for.
+        case byLink(matchID: String, state: GameState, localPlayer: PlayerID)
     }
 
     private var difficulty: CPUDifficulty {
@@ -50,29 +54,33 @@ struct HomeView: View {
             ZStack {
                 PaperBackground()
 
-                VStack(spacing: 0) {
-                    Spacer(minLength: 12)
-                    title
-                    Spacer(minLength: 16)
-                    menu
-                    Spacer(minLength: 18)
-                    BoardOptionsPanel(setup: $storedBoardSetup, wrap: $storedBoardWrap)
-                    Spacer(minLength: 10)
-                    WildcardRulesToggle(isOn: $wildcardRules)
-                    Spacer(minLength: 8)
-                    RulesCheckbox(
-                        isOn: $blenderBattles,
-                        title: "Blender battles",
-                        detail: "Blenders fight for a square instead of just taking it. "
-                            + "Half your standing fruit, plus one for attacking, plus a die each.",
-                        hint: "Blender collisions are decided by fruit on the board and a dice roll"
-                    )
-                    Spacer(minLength: 12)
-                    Button("How to play") { isShowingRules = true }
-                        .buttonStyle(PaperButtonStyle())
-                        .padding(.bottom, 24)
+                // Scrolls, because it has to. Four ways to play, two board dimensions
+                // and two rules opt-ins no longer fit a phone between the title and the
+                // bottom edge — the fixed layout simply pushed "How to play" off the
+                // screen where nothing could reach it.
+                ScrollView {
+                    VStack(spacing: 16) {
+                        title
+                            .padding(.top, 12)
+                        menu
+                        BoardOptionsPanel(setup: $storedBoardSetup, wrap: $storedBoardWrap)
+                        WildcardRulesToggle(isOn: $wildcardRules)
+                        RulesCheckbox(
+                            isOn: $blenderBattles,
+                            title: "Blender battles",
+                            detail: "Blenders fight for a square instead of just taking it. "
+                                + "Half your standing fruit, plus one for attacking, plus a die each.",
+                            hint: "Blender collisions are decided by fruit on the board and a dice roll"
+                        )
+                        Button("How to play") { isShowingRules = true }
+                            .buttonStyle(PaperButtonStyle())
+                            .padding(.top, 4)
+                            .padding(.bottom, 24)
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 28)
                 }
-                .padding(.horizontal, 28)
+                .scrollBounceBehavior(.basedOnSize)
             }
             .navigationDestination(item: $route) { route in
                 switch route {
@@ -103,6 +111,14 @@ struct HomeView: View {
                             blendEffects: blendEffects
                         )
                     )
+                case .byLink(let matchID, let state, let localPlayer):
+                    MatchView(
+                        viewModel: MatchViewModel(
+                            mode: .byLink(matchID: matchID, localPlayer: localPlayer),
+                            state: state,
+                            blendEffects: blendEffects
+                        )
+                    )
                 case .online:
                     OnlineLobbyView(
                         viewModel: OnlineLobbyViewModel(
@@ -116,6 +132,27 @@ struct HomeView: View {
                         )
                     )
                 }
+            }
+            .onOpenURL { url in
+                do {
+                    let payload = try MatchLink.payload(from: url)
+                    // Whoever opens the link is whoever the match is waiting on.
+                    route = .byLink(
+                        matchID: payload.matchID,
+                        state: payload.state,
+                        localPlayer: payload.state.activePlayer
+                    )
+                } catch {
+                    linkError = error.localizedDescription
+                }
+            }
+            .alert(
+                "Can't open that match",
+                isPresented: Binding(get: { linkError != nil }, set: { if !$0 { linkError = nil } })
+            ) {
+                Button("OK", role: .cancel) { linkError = nil }
+            } message: {
+                Text(linkError ?? "")
             }
             .sheet(isPresented: $isShowingRules) { RulesView() }
             .sheet(isPresented: $isShowingCPUOptions) {
@@ -133,6 +170,16 @@ struct HomeView: View {
                 .presentationDetents([.medium])
             }
         }
+    }
+
+    /// The inviter plays first and sends the link once they have moved, so the match is
+    /// created here exactly as any other is — the link is a transport, not a mode of play.
+    private func startLinkMatch() {
+        let state = GameSetup.newGame(
+            ruleSet: ruleSet, boardSetup: boardSetup, boardWrap: boardWrap,
+            blenderBattles: blenderBattles
+        )
+        route = .byLink(matchID: UUID().uuidString, state: state, localPlayer: .one)
     }
 
     private var title: some View {
@@ -168,6 +215,11 @@ struct HomeView: View {
                 title: "Play Online",
                 detail: "Take a turn, put the phone down, come back later."
             ) { route = .online }
+
+            MenuButton(
+                title: "Invite by Link",
+                detail: "Send a friend a link. No accounts, no waiting."
+            ) { startLinkMatch() }
         }
     }
 }

@@ -43,6 +43,17 @@ struct MatchView: View {
         .navigationTitle("")
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            // Appears only while the opponent owes a move, which is exactly when there is
+            // something to send. In link play this is the whole transport, so it sits in
+            // the toolbar rather than behind a menu.
+            if let link = viewModel.linkToSend {
+                ToolbarItem(placement: .topBarLeading) {
+                    ShareLink(item: link, message: Text(viewModel.linkInvitation)) {
+                        Label("Send move", systemImage: "square.and.arrow.up")
+                    }
+                    .tint(Palette.amber)
+                }
+            }
             ToolbarItem(placement: .topBarTrailing) {
                 Button("Rules", systemImage: "book") { isShowingRules = true }
                     .tint(Palette.ink)

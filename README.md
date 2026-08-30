@@ -133,6 +133,20 @@ The dice are derived from the position so both devices in an online match settle
 identically — and the CPU searches with the dice removed, so it cannot pick only the
 battles it has already won.
 
+## Play by link
+
+A match payload is the entire truth of a match — versioned, self-contained, and refused
+outright if it does not match the build reading it. So a link can simply *be* the game:
+**Invite by Link** starts a match, and once you have moved, the share button hands your
+opponent a URL containing the whole thing. They tap it, play, and send one back. No
+server, no accounts, no matchmaking, and it works across any messaging app.
+
+Compressed and url-safe, a fresh match is about 710 characters, thirty turns in about
+1,600, eighty turns about 2,700.
+
+Links use the `bananachess://` scheme, which needs nothing hosted. See `docs/` for the
+three steps that turn them into universal `https://` links.
+
 ## Building and releasing
 
 Xcode 26.5, iOS 18 deployment target, iPhone only. `Engine/` is a local Swift package

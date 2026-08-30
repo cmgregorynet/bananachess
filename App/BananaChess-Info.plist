@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<!--
+	  Everything else in this app's Info.plist is generated from build settings.
+	  This file exists for the one thing that cannot be: an array. Registering the
+	  scheme is what lets a shared match link open the app with no domain, no
+	  hosting and no entitlement — see MatchLinkSettings for the universal-link
+	  upgrade path.
+	-->
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleTypeRole</key>
+			<string>Viewer</string>
+			<key>CFBundleURLName</key>
+			<string>com.charlesbarton.bananachess.match</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>bananachess</string>
+			</array>
+		</dict>
+	</array>
+</dict>
+</plist>

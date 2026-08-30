@@ -523,4 +523,23 @@ final class MatchSmokeUITests: XCTestCase {
             "a battle should have cost somebody a blender"
         )
     }
+
+    // MARK: - Play by link
+
+    func testInviteByLinkStartsAMatchAndOffersTheLinkOnceYouHaveMoved() {
+        let app = launch()
+        app.buttons["Invite by Link. Send a friend a link. No accounts, no waiting."].tap()
+        XCTAssertTrue(square(app, 4, 0).waitForExistence(timeout: 5), "the board should appear")
+
+        // Nothing to send yet: it is still your move, so the opponent owes nothing.
+        XCTAssertFalse(app.buttons["Send move"].exists)
+
+        square(app, 4, 0).tap()
+        square(app, 3, 0).tap()
+
+        XCTAssertTrue(
+            app.buttons["Send move"].waitForExistence(timeout: 5),
+            "once the turn has passed there is a move to hand over"
+        )
+    }
 }

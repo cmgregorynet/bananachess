@@ -643,6 +643,31 @@ final class MatchViewModel {
         }
     }
 
+    // MARK: - Play by link
+
+    /// The link to hand to the opponent, or nil while there is nothing for them to do.
+    ///
+    /// Built from the authoritative state rather than the displayed one, so a link sent
+    /// mid-animation still carries the finished turn. The final position is shareable too:
+    /// the opponent should get to see how it ended rather than be left waiting.
+    var linkToSend: URL? {
+        guard case .byLink(let matchID, let localPlayer) = mode else { return nil }
+        guard authoritativeState.activePlayer != localPlayer || authoritativeState.status.isOver
+        else { return nil }
+        let payload = MatchPayload(
+            matchID: matchID,
+            moveNumber: authoritativeState.history.count,
+            state: authoritativeState
+        )
+        return try? MatchLinkSettings.url(for: payload)
+    }
+
+    var linkInvitation: String {
+        authoritativeState.status.isOver
+            ? "Here's how our Banana Chess match finished."
+            : "Your move in Banana Chess."
+    }
+
     // MARK: - Match controls
 
     func restart() {

@@ -5,6 +5,9 @@ enum MatchMode: Hashable, Codable, Sendable {
     case localVersus
     case computer(difficulty: CPUDifficulty, humanPlays: PlayerID)
     case online(matchID: String, localPlayer: PlayerID, opponentName: String?)
+    /// Correspondence play by link: no server, no accounts. Each side sends the other a
+    /// link containing the whole match, because a payload already is the whole match.
+    case byLink(matchID: String, localPlayer: PlayerID)
 
     /// Which engine player sits at the bottom of the screen. The human always does;
     /// in local pass-and-play, player one does.
@@ -13,6 +16,7 @@ enum MatchMode: Hashable, Codable, Sendable {
         case .localVersus: .one
         case .computer(_, let humanPlays): humanPlays
         case .online(_, let localPlayer, _): localPlayer
+        case .byLink(_, let localPlayer): localPlayer
         }
     }
 
@@ -22,7 +26,14 @@ enum MatchMode: Hashable, Codable, Sendable {
         case .localVersus: true
         case .computer(_, let humanPlays): player == humanPlays
         case .online(_, let localPlayer, _): player == localPlayer
+        case .byLink(_, let localPlayer): player == localPlayer
         }
+    }
+
+    /// Whether a turn leaves on a link the player has to send by hand.
+    var isByLink: Bool {
+        if case .byLink = self { return true }
+        return false
     }
 
     var isOnline: Bool {
@@ -43,6 +54,8 @@ enum MatchMode: Hashable, Codable, Sendable {
             player == humanPlays ? "You" : "\(difficulty.displayName) CPU"
         case .online(_, let localPlayer, let opponentName):
             player == localPlayer ? "You" : (opponentName ?? "Opponent")
+        case .byLink(_, let localPlayer):
+            player == localPlayer ? "You" : "Your opponent"
         }
     }
 }

@@ -1,0 +1,12 @@
+{
+  "applinks": {
+    "details": [
+      {
+        "appIDs": ["8C6J659NC4.com.charlesbarton.bananachess"],
+        "components": [
+          { "/": "/m/*", "comment": "A shared match: /m/<format>/<encoded match>" }
+        ]
+      }
+    ]
+  }
+}
