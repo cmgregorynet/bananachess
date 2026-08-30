@@ -26,6 +26,9 @@ public struct OnlineMatchSummary: Sendable, Hashable, Identifiable {
     public let lastActivity: Date
     public let outcome: Outcome?
     public let payload: MatchPayload?
+    /// Where a transport hands out an invitation. Game Center has its own invite UI and
+    /// leaves this nil; CloudKit produces a share URL, which is the link a player sends.
+    public let shareURL: URL?
 
     public init(
         id: String,
@@ -34,7 +37,8 @@ public struct OnlineMatchSummary: Sendable, Hashable, Identifiable {
         status: OnlineMatchStatus,
         lastActivity: Date,
         outcome: Outcome? = nil,
-        payload: MatchPayload? = nil
+        payload: MatchPayload? = nil,
+        shareURL: URL? = nil
     ) {
         self.id = id
         self.opponentName = opponentName
@@ -43,6 +47,7 @@ public struct OnlineMatchSummary: Sendable, Hashable, Identifiable {
         self.lastActivity = lastActivity
         self.outcome = outcome
         self.payload = payload
+        self.shareURL = shareURL
     }
 }
 

@@ -70,6 +70,9 @@ final class MatchViewModel {
     @ObservationIgnored private var submitTask: Task<Void, Never>?
     @ObservationIgnored private var authority: MatchAuthority?
     @ObservationIgnored private let onlineService: (any OnlineMatchService)?
+    /// Handed over once, by a transport that invites with a URL. CloudKit's share link is
+    /// the invitation itself, so it is worth sharing until the opponent turns up.
+    @ObservationIgnored let invitationURL: URL?
     @ObservationIgnored private let snapshots: MatchSnapshotStore
     @ObservationIgnored private var pendingTurn: MatchAuthority.PreparedTurn?
     @ObservationIgnored private var reduceMotion = false
@@ -115,6 +118,7 @@ final class MatchViewModel {
         mode: MatchMode,
         state: GameState = GameSetup.newGame(),
         onlineService: (any OnlineMatchService)? = nil,
+        invitationURL: URL? = nil,
         snapshots: MatchSnapshotStore = MatchSnapshotStore(),
         blendEffects: BlendEffectPolicy = .standard
     ) {
@@ -122,6 +126,7 @@ final class MatchViewModel {
         self.displayState = state
         self.authoritativeState = state
         self.onlineService = onlineService
+        self.invitationURL = invitationURL
         self.snapshots = snapshots
         self.blendEffects = blendEffects
 
@@ -651,6 +656,9 @@ final class MatchViewModel {
     /// mid-animation still carries the finished turn. The final position is shareable too:
     /// the opponent should get to see how it ended rather than be left waiting.
     var linkToSend: URL? {
+        // An outstanding invitation outranks anything else: until somebody accepts, the
+        // only useful thing on this screen is the link.
+        if let invitationURL, !hasOpponentJoined { return invitationURL }
         guard case .byLink(let matchID, let localPlayer) = mode else { return nil }
         guard authoritativeState.activePlayer != localPlayer || authoritativeState.status.isOver
         else { return nil }
@@ -662,7 +670,11 @@ final class MatchViewModel {
         return try? MatchLinkSettings.url(for: payload)
     }
 
+    /// Once a move has come back from the other side, somebody is clearly there.
+    private var hasOpponentJoined: Bool { !authoritativeState.history.isEmpty }
+
     var linkHandoffTitle: String {
+        if invitationURL != nil, !hasOpponentJoined { return "Send the invitation" }
         if authoritativeState.status.isOver { return "Send the final position" }
         return authoritativeState.history.isEmpty ? "Send the invitation" : "Send your move"
     }

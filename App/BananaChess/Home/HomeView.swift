@@ -15,6 +15,8 @@ struct HomeView: View {
     @State private var isShowingRules = false
     @State private var isShowingCPUOptions = false
     @State private var linkError: String?
+    @State private var isInviting = false
+    @Environment(CloudKitInbox.self) private var inbox
 
     private enum Route: Hashable {
         case local
@@ -23,6 +25,8 @@ struct HomeView: View {
         /// A match arriving from, or leaving on, a link. The whole match travels in the
         /// URL, so there is nothing to look up and nothing to wait for.
         case byLink(matchID: String, state: GameState, localPlayer: PlayerID)
+        /// A live iCloud match. The share URL is the invitation; moves arrive on their own.
+        case cloud(summary: OnlineMatchSummary)
     }
 
     private var difficulty: CPUDifficulty {
@@ -119,6 +123,20 @@ struct HomeView: View {
                             blendEffects: blendEffects
                         )
                     )
+                case .cloud(let summary):
+                    MatchView(
+                        viewModel: MatchViewModel(
+                            mode: .online(
+                                matchID: summary.id,
+                                localPlayer: summary.localPlayer,
+                                opponentName: summary.opponentName
+                            ),
+                            state: summary.payload?.state ?? GameSetup.newGame(),
+                            onlineService: inbox.service,
+                            invitationURL: summary.shareURL,
+                            blendEffects: blendEffects
+                        )
+                    )
                 case .online:
                     OnlineLobbyView(
                         viewModel: OnlineLobbyViewModel(
@@ -131,6 +149,14 @@ struct HomeView: View {
                             )
                         )
                     )
+                }
+            }
+            .onChange(of: inbox.acceptedMatchID) { _, accepted in
+                guard let accepted else { return }
+                inbox.acceptedMatchID = nil
+                Task {
+                    do { route = .cloud(summary: try await inbox.service.loadMatch(id: accepted)) }
+                    catch { linkError = error.localizedDescription }
                 }
             }
             .onOpenURL { url in
@@ -179,6 +205,28 @@ struct HomeView: View {
     ///
     /// It also splits the two advantages: whoever invites picks the board and the rules,
     /// whoever accepts gets the first move, which is worth about 72% of decided matches.
+    /// Live over iCloud when it is available, and a correspondence link when it is not.
+    /// The fallback matters: a player with no iCloud account should still be able to
+    /// invite someone rather than be told no.
+    private func invite() {
+        guard !isInviting else { return }
+        isInviting = true
+        Task {
+            defer { isInviting = false }
+            do {
+                let summary = try await inbox.service.inviteFriend(
+                    MatchOptions(
+                        ruleSet: ruleSet, boardSetup: boardSetup, boardWrap: boardWrap,
+                        blenderBattles: blenderBattles
+                    )
+                )
+                route = .cloud(summary: summary)
+            } catch {
+                startLinkMatch()
+            }
+        }
+    }
+
     private func startLinkMatch() {
         let state = GameSetup.newGame(
             startingPlayer: .one,
@@ -224,8 +272,8 @@ struct HomeView: View {
 
             MenuButton(
                 title: "Invite by Link",
-                detail: "Correspondence: send a link each turn. No accounts needed."
-            ) { startLinkMatch() }
+                detail: "Send a friend a link and play. Live over iCloud."
+            ) { invite() }
         }
     }
 }

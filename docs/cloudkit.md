@@ -29,6 +29,26 @@ times:
 Xcode writes these into `BananaChess.entitlements` and enables them on the App ID at the
 same time. Doing it here rather than in the developer portal keeps the two in step.
 
+### Then flip the flag, in the same sitting
+
+In `App/BananaChess-Info.plist`, set `BananaChessCloudKitEnabled` to `<true/>`.
+
+This is not ceremony. `CKContainer` **traps** rather than failing when the app has no
+iCloud entitlement, and iOS gives an app no supported way to read its own entitlements at
+runtime — `SecTaskCopyValueForEntitlement` is macOS only. So the flag is what tells the
+app whether it is allowed to touch CloudKit at all.
+
+Which means the two settings must move together, and the failure is asymmetric:
+
+| Entitlement | Flag | Result |
+|---|---|---|
+| absent | `false` | iCloud play is off; Invite by Link falls back to correspondence links |
+| present | `false` | iCloud play stays off — harmless, just not switched on |
+| absent | **`true`** | **the app crashes on launch**, before it draws anything |
+
+The last row is not theoretical: it is exactly how this arrived, caught by the UI suite
+when all twenty tests died at startup.
+
 If you would rather use the portal: Certificates, Identifiers & Profiles → Identifiers →
 `com.charlesbarton.bananachess` → enable **iCloud** (with the container above) and **Push
 Notifications**, then let Xcode refresh the provisioning profile.

@@ -531,7 +531,7 @@ final class MatchSmokeUITests: XCTestCase {
     /// with nothing to send until you had taken a turn.
     func testInviteByLinkOffersTheLinkImmediately() {
         let app = launch()
-        app.buttons["Invite by Link. Correspondence: send a link each turn. No accounts needed."].tap()
+        app.buttons["Invite by Link. Send a friend a link and play. Live over iCloud."].tap()
 
         let send = app.buttons["sendLink"]
         XCTAssertTrue(send.waitForExistence(timeout: 5), "a link should be ready at once")
