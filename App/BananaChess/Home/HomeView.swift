@@ -27,6 +27,10 @@ struct HomeView: View {
         case byLink(matchID: String, state: GameState, localPlayer: PlayerID)
         /// A live iCloud match. The share URL is the invitation; moves arrive on their own.
         case cloud(summary: OnlineMatchSummary)
+        /// Matches in progress over iCloud, and the button that starts another. Going via
+        /// the lobby is what makes a match survive closing the app: without a list, an
+        /// invitation you had already sent was unreachable the moment you left the board.
+        case cloudLobby
     }
 
     private var difficulty: CPUDifficulty {
@@ -137,6 +141,17 @@ struct HomeView: View {
                             blendEffects: blendEffects
                         )
                     )
+                case .cloudLobby:
+                    OnlineLobbyView(
+                        viewModel: OnlineLobbyViewModel(
+                            service: inbox.service,
+                            options: MatchOptions(
+                                ruleSet: ruleSet, boardSetup: boardSetup,
+                                boardWrap: boardWrap, blenderBattles: blenderBattles
+                            )
+                        ),
+                        title: "iCloud"
+                    )
                 case .online:
                     OnlineLobbyView(
                         viewModel: OnlineLobbyViewModel(
@@ -209,22 +224,13 @@ struct HomeView: View {
     /// The fallback matters: a player with no iCloud account should still be able to
     /// invite someone rather than be told no.
     private func invite() {
-        guard !isInviting else { return }
-        isInviting = true
-        Task {
-            defer { isInviting = false }
-            do {
-                let summary = try await inbox.service.inviteFriend(
-                    MatchOptions(
-                        ruleSet: ruleSet, boardSetup: boardSetup, boardWrap: boardWrap,
-                        blenderBattles: blenderBattles
-                    )
-                )
-                route = .cloud(summary: summary)
-            } catch {
-                startLinkMatch()
-            }
+        guard CloudKitMatchService.isConfigured else {
+            // No iCloud in this build: a correspondence link still lets them invite
+            // somebody rather than be told no.
+            startLinkMatch()
+            return
         }
+        route = .cloudLobby
     }
 
     private func startLinkMatch() {

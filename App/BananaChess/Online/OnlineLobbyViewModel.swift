@@ -126,7 +126,10 @@ final class OnlineLobbyViewModel {
         MatchViewModel(
             mode: mode(for: summary),
             state: summary.payload?.state ?? GameSetup.newGame(),
-            onlineService: service
+            onlineService: service,
+            // CloudKit hands back a share URL; Game Center invites through its own UI and
+            // leaves this nil, so the board simply shows no invitation to send.
+            invitationURL: summary.shareURL
         )
     }
 }

@@ -3,6 +3,9 @@ import SwiftUI
 
 struct OnlineLobbyView: View {
     @State var viewModel: OnlineLobbyViewModel
+    /// Which service is behind this lobby, for the wording only — the screen itself does
+    /// not care whether matches come from Game Center or iCloud.
+    var title = "Game Center"
     @State private var openMatch: OnlineMatchSummary?
 
     var body: some View {
@@ -22,7 +25,7 @@ struct OnlineLobbyView: View {
         .navigationDestination(item: $openMatch) { summary in
             MatchView(viewModel: viewModel.makeMatchViewModel(for: summary))
         }
-        .alert("Game Center", isPresented: .constant(viewModel.error != nil)) {
+        .alert(title, isPresented: .constant(viewModel.error != nil)) {
             Button("OK") { viewModel.error = nil }
         } message: {
             Text(viewModel.error ?? "")

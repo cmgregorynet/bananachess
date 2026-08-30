@@ -132,6 +132,10 @@ final class CloudKitMatchService: NSObject, OnlineMatchService {
     // MARK: - Reading
 
     func loadMatches() async throws -> [OnlineMatchSummary] {
+        // Who you are decides which side of every board you are on, so it has to be
+        // known before a single record is shaped. Without this a relaunch put the owner
+        // back as player two, because `localUserRecordName` was still nil.
+        _ = try await requireUser()
         var found: [OnlineMatchSummary] = []
         for scope in [CKDatabase.Scope.private, .shared] {
             let database = try cloudContainer().database(with: scope)
@@ -146,6 +150,7 @@ final class CloudKitMatchService: NSObject, OnlineMatchService {
     }
 
     func loadMatch(id: String) async throws -> OnlineMatchSummary {
+        _ = try await requireUser()
         for scope in [CKDatabase.Scope.private, .shared] {
             let database = try cloudContainer().database(with: scope)
             let zones = (try? await database.allRecordZones()) ?? []
@@ -173,10 +178,18 @@ final class CloudKitMatchService: NSObject, OnlineMatchService {
         )
     }
 
+    /// Marks the match finished for both sides.
+    ///
+    /// The zone is deliberately left in place: deleting it would take the match out from
+    /// under the opponent while they are reading it, and they should get to see that it
+    /// ended rather than have it vanish.
     func forfeit(matchID: String) async throws {
-        // Nothing to forfeit to: the record simply stops being played. Removing the zone
-        // would take the match away from the opponent mid-read, so it is left alone.
-        throw CloudKitMatchError.notSupported
+        let (database, record) = try await locate(matchID)
+        record[Field.finished] = 1 as CKRecordValue
+        let result = try await database.modifyRecords(
+            saving: [record], deleting: [], savePolicy: .changedKeys
+        )
+        for (_, outcome) in result.saveResults { _ = try outcome.get() }
     }
 
     private func write(

@@ -81,6 +81,24 @@ do not need a Game Center account, and there is no sign-in inside the app.
 - **Game Center** enabled on the App ID, because the app already ships that entitlement
   for the existing Play Online mode.
 
+## What has never been run
+
+Everything on the app side compiles and reads correctly, but **no part of the CloudKit
+round trip has ever executed** — there is no container, no iCloud account and no push
+delivery in the environment it was written in. Unproven, specifically:
+
+- whether the record type is created as expected on the first save;
+- whether the database subscriptions register, and whether their silent pushes arrive;
+- whether accepting a `CKShare` resolves to the right zone on the recipient's device;
+- whether the `ifServerRecordUnchanged` guard behaves when two people really do move at
+  the same moment.
+
+Reading the code back found three genuine faults an hour after it was written — a match
+that could not be reopened, an owner who came back as the wrong player, and a forfeit
+button that only produced an error. A device run should be expected to find more. That is
+why the flag defaults to off and the correspondence fallback is still in place: with
+CloudKit unconfigured the app behaves exactly as it did before any of this.
+
 ## What I need back from you
 
 Just confirmation that step 2 is done and the container name matches. The container
