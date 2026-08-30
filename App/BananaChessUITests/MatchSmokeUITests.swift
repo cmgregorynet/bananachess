@@ -526,20 +526,19 @@ final class MatchSmokeUITests: XCTestCase {
 
     // MARK: - Play by link
 
-    func testInviteByLinkStartsAMatchAndOffersTheLinkOnceYouHaveMoved() {
+    /// The button says "Invite by Link", so there has to be a link the moment it is
+    /// tapped. It used to deal the inviter the first move, which meant landing on a board
+    /// with nothing to send until you had taken a turn.
+    func testInviteByLinkOffersTheLinkImmediately() {
         let app = launch()
-        app.buttons["Invite by Link. Send a friend a link. No accounts, no waiting."].tap()
-        XCTAssertTrue(square(app, 4, 0).waitForExistence(timeout: 5), "the board should appear")
+        app.buttons["Invite by Link. Correspondence: send a link each turn. No accounts needed."].tap()
 
-        // Nothing to send yet: it is still your move, so the opponent owes nothing.
-        XCTAssertFalse(app.buttons["Send move"].exists)
-
-        square(app, 4, 0).tap()
-        square(app, 3, 0).tap()
-
+        let send = app.buttons["sendLink"]
+        XCTAssertTrue(send.waitForExistence(timeout: 5), "a link should be ready at once")
         XCTAssertTrue(
-            app.buttons["Send move"].waitForExistence(timeout: 5),
-            "once the turn has passed there is a move to hand over"
+            send.label.contains("Send the invitation"),
+            "and should say what it is: \(send.label)"
         )
+        expectTurnIndicator(app, toContain: "Send the link to start", timeout: 5)
     }
 }

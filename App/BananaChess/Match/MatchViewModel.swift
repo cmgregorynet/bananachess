@@ -662,6 +662,11 @@ final class MatchViewModel {
         return try? MatchLinkSettings.url(for: payload)
     }
 
+    var linkHandoffTitle: String {
+        if authoritativeState.status.isOver { return "Send the final position" }
+        return authoritativeState.history.isEmpty ? "Send the invitation" : "Send your move"
+    }
+
     var linkInvitation: String {
         authoritativeState.status.isOver
             ? "Here's how our Banana Chess match finished."
@@ -743,6 +748,11 @@ final class MatchViewModel {
         case .waitingForOpponent: return "Waiting for \(mode.name(for: topPlayer))"
         case .submissionFailed: return "Move not sent"
         default: break
+        }
+        if mode.isByLink, linkToSend != nil {
+            return displayState.history.isEmpty
+                ? "Send the link to start"
+                : "Send your move"
         }
         return "\(mode.name(for: displayState.activePlayer)) to move"
     }

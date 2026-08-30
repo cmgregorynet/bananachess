@@ -22,6 +22,7 @@ struct MatchView: View {
                 BoardView(viewModel: viewModel)
                     .padding(.horizontal, 10)
                 ScoreboardView(viewModel: viewModel, player: viewModel.bottomPlayer, seat: .bottom)
+                linkHandoff
                 controls
             }
             .padding(.horizontal, 16)
@@ -183,6 +184,31 @@ struct MatchView: View {
     }
 
     // MARK: - Controls
+
+    /// In link play the share sheet is the whole transport, so it gets a real control
+    /// under the board rather than only an icon in the toolbar — there is nothing else
+    /// the player can do at this point, and nothing else to look at.
+    @ViewBuilder
+    private var linkHandoff: some View {
+        if let link = viewModel.linkToSend {
+            ShareLink(item: link, message: Text(viewModel.linkInvitation)) {
+                HStack(spacing: 8) {
+                    Image(systemName: "square.and.arrow.up")
+                    Text(viewModel.linkHandoffTitle)
+                }
+                .font(.system(.callout, design: .serif).weight(.semibold))
+                .foregroundStyle(Palette.ink)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 11)
+                .background {
+                    Capsule().fill(Palette.amber.opacity(0.3))
+                    Capsule().strokeBorder(Palette.amber, lineWidth: 1.6)
+                }
+            }
+            .accessibilityIdentifier("sendLink")
+            .padding(.horizontal, 4)
+        }
+    }
 
     private var controls: some View {
         HStack(spacing: 12) {

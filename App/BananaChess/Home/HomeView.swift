@@ -172,14 +172,20 @@ struct HomeView: View {
         }
     }
 
-    /// The inviter plays first and sends the link once they have moved, so the match is
-    /// created here exactly as any other is — the link is a transport, not a mode of play.
+    /// The invitation *is* the first link, so the match is dealt with the opponent to
+    /// move and the inviter sitting second. Tapping Invite by Link therefore lands on a
+    /// board with something to send immediately — dealing it the other way round left
+    /// nothing to share until you had taken a turn, which is not what the button says.
+    ///
+    /// It also splits the two advantages: whoever invites picks the board and the rules,
+    /// whoever accepts gets the first move, which is worth about 72% of decided matches.
     private func startLinkMatch() {
         let state = GameSetup.newGame(
+            startingPlayer: .one,
             ruleSet: ruleSet, boardSetup: boardSetup, boardWrap: boardWrap,
             blenderBattles: blenderBattles
         )
-        route = .byLink(matchID: UUID().uuidString, state: state, localPlayer: .one)
+        route = .byLink(matchID: UUID().uuidString, state: state, localPlayer: .two)
     }
 
     private var title: some View {
@@ -213,12 +219,12 @@ struct HomeView: View {
 
             MenuButton(
                 title: "Play Online",
-                detail: "Take a turn, put the phone down, come back later."
+                detail: "Game Center. Their move arrives on its own."
             ) { route = .online }
 
             MenuButton(
                 title: "Invite by Link",
-                detail: "Send a friend a link. No accounts, no waiting."
+                detail: "Correspondence: send a link each turn. No accounts needed."
             ) { startLinkMatch() }
         }
     }

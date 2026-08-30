@@ -137,9 +137,15 @@ battles it has already won.
 
 A match payload is the entire truth of a match — versioned, self-contained, and refused
 outright if it does not match the build reading it. So a link can simply *be* the game:
-**Invite by Link** starts a match, and once you have moved, the share button hands your
-opponent a URL containing the whole thing. They tap it, play, and send one back. No
-server, no accounts, no matchmaking, and it works across any messaging app.
+**Invite by Link** starts a match and hands you a URL containing the whole thing. Your
+opponent taps it, plays, and sends one back. No server, no accounts, no matchmaking, and
+it works across any messaging app.
+
+This is **correspondence play — a link each turn**, not a live connection. For moves that
+arrive on their own, use **Play Online**, which is Game Center turn-based and pushes the
+opponent's move to your device. Two phones cannot hold a socket open to each other over
+the internet — both sit behind NAT — so anything live needs something in the middle:
+Game Center, CloudKit, or a relay of your own.
 
 Compressed and url-safe, a fresh match is about 710 characters, thirty turns in about
 1,600, eighty turns about 2,700.
