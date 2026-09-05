@@ -57,7 +57,12 @@ final class CloudKitMatchService: NSObject, OnlineMatchService {
     /// rather than failing when the entitlement is missing, so getting this wrong is not
     /// a degraded feature, it is an app that does not start.
     static var isConfigured: Bool {
-        Bundle.main.object(forInfoDictionaryKey: "BananaChessCloudKitEnabled") as? Bool ?? false
+        #if DEBUG
+        // The simulator has no iCloud account, so the UI tests need a way to reach the
+        // correspondence path deliberately rather than through a failure.
+        if ProcessInfo.processInfo.arguments.contains("-noCloudKit") { return false }
+        #endif
+        return Bundle.main.object(forInfoDictionaryKey: "BananaChessCloudKitEnabled") as? Bool ?? false
     }
 
     private func cloudContainer() throws -> CKContainer {

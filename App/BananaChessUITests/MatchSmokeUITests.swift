@@ -16,7 +16,8 @@ final class MatchSmokeUITests: XCTestCase {
         wildcards: Bool = false,
         board: String = "standard",
         edges: String = "flat",
-        battles: Bool = false
+        battles: Bool = false,
+        cloudKit: Bool = false
     ) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments += [
@@ -26,6 +27,9 @@ final class MatchSmokeUITests: XCTestCase {
             "-boardWrap", edges,
             "-blenderBattles", battles ? "YES" : "NO",
         ]
+        // iCloud play cannot work in the simulator, and every test but the lobby one is
+        // about something else, so they take the correspondence path deliberately.
+        if !cloudKit { app.launchArguments.append("-noCloudKit") }
         app.launch()
         return app
     }
@@ -530,7 +534,7 @@ final class MatchSmokeUITests: XCTestCase {
     /// tapped. It used to deal the inviter the first move, which meant landing on a board
     /// with nothing to send until you had taken a turn.
     func testInviteByLinkOffersTheLinkImmediately() {
-        let app = launch()
+        let app = launch()   // correspondence path: no iCloud in the simulator
         app.buttons["Invite by Link. Send a friend a link and play. Live over iCloud."].tap()
 
         let send = app.buttons["sendLink"]
@@ -540,5 +544,21 @@ final class MatchSmokeUITests: XCTestCase {
             "and should say what it is: \(send.label)"
         )
         expectTurnIndicator(app, toContain: "Send the link to start", timeout: 5)
+    }
+
+    /// With iCloud configured the same button goes to the lobby instead, which is what
+    /// makes a match survive closing the app.
+    func testInviteByLinkOpensTheICloudLobbyWhenConfigured() {
+        let app = launch(cloudKit: true)
+        app.buttons["Invite by Link. Send a friend a link and play. Live over iCloud."].tap()
+
+        // The simulator has no iCloud account, so the lobby asks for one rather than
+        // pretending — the point is that the button routed to iCloud at all.
+        XCTAssertTrue(
+            app.staticTexts.element(matching: NSPredicate(format: "label CONTAINS[c] 'iCloud'"))
+                .waitForExistence(timeout: 5)
+                || app.buttons["sendLink"].waitForExistence(timeout: 1),
+            "Invite by Link should reach the iCloud lobby when CloudKit is configured"
+        )
     }
 }

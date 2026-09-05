@@ -55,6 +55,13 @@ Notifications**, then let Xcode refresh the provisioning profile.
 
 ## 3. Deploy the schema before any TestFlight build
 
+> **Outstanding right now.** Build 1 is already uploaded and it ships with iCloud play
+> switched on, signed for the **Production** CloudKit environment. Until the schema is
+> deployed there, a tester who taps Invite by Link will reach the lobby and fail when it
+> tries to create the match. Local runs from Xcode are unaffected — those talk to
+> Development.
+
+
 CloudKit keeps **development** and **production** environments apart, and they do not
 share a schema. A debug build from Xcode talks to development; **a TestFlight build talks
 to production**. A schema that only exists in development means a TestFlight build that

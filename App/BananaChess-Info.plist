@@ -2,21 +2,8 @@
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<!--
-	  Everything else in this app's Info.plist is generated from build settings.
-	  This file exists for the one thing that cannot be: an array. Registering the
-	  scheme is what lets a shared match link open the app with no domain, no
-	  hosting and no entitlement — see MatchLinkSettings for the universal-link
-	  upgrade path.
-	-->
-	<!--
-	  Flipped to <true/> in the same sitting as adding the iCloud capability. iOS has
-	  no supported way to read your own entitlements at runtime, and CKContainer traps
-	  rather than failing when the entitlement is absent — so this flag is what stands
-	  between "iCloud play is off" and an app that will not launch. See docs/cloudkit.md.
-	-->
 	<key>BananaChessCloudKitEnabled</key>
-	<false/>
+	<true/>
 	<key>CFBundleURLTypes</key>
 	<array>
 		<dict>
@@ -29,6 +16,10 @@
 				<string>bananachess</string>
 			</array>
 		</dict>
+	</array>
+	<key>UIBackgroundModes</key>
+	<array>
+		<string>remote-notification</string>
 	</array>
 </dict>
 </plist>
