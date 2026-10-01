@@ -54,9 +54,29 @@ h1 { font-size: 1.9rem; margin: 0.4rem 0 0; font-weight: 600; }
   border-radius: 12px;
   padding: 0.55rem 0.75rem;
   display: flex;
-  justify-content: space-between;
-  align-items: baseline;
+  flex-direction: column;
+  gap: 0.4rem;
 }
+.score-heading { display: flex; justify-content: space-between; align-items: baseline; }
+
+.trackers { display: flex; flex-wrap: wrap; gap: 0.3rem; }
+
+.track {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.15rem 0.4rem;
+  border: 1px solid var(--ink-faint);
+  border-radius: 999px;
+  background: rgba(248, 226, 213, 0.45);
+}
+.track-label { font-size: 0.62rem; color: var(--ink-soft); }
+.track-count { font-size: 0.68rem; font-variant-numeric: tabular-nums; }
+.track.complete { border-color: var(--amber); border-width: 2px; background: #f7e3c9; }
+/* Ruled out rather than hidden: knowing a threat is dead is as useful as knowing it is
+   live, to both players. */
+.track.blocked { opacity: 0.42; }
+.track.blocked .track-label { text-decoration: line-through; }
 .score.active { border-color: var(--amber); border-width: 2px; }
 .score .name { font-size: 0.85rem; color: var(--ink-soft); }
 .score .value { font-size: 1.35rem; font-variant-numeric: tabular-nums; }

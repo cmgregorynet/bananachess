@@ -1,4 +1,5 @@
 import { readFileSync } from "node:fs";
+import { gunzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { apply, RULES_VERSION, describeAction, legalActions } from "../src/engine/rules.js";
 import { newGame } from "../src/engine/setup.js";
@@ -13,6 +14,7 @@ interface Fixture {
 }
 
 interface FixtureGame {
+  driver: string;
   ruleSet: RuleSet;
   boardSetup: BoardSetup;
   boardWrap: BoardWrap;
@@ -36,7 +38,9 @@ interface FixtureStep {
 }
 
 const fixture = JSON.parse(
-  readFileSync(new URL("../fixtures/conformance.json", import.meta.url), "utf8"),
+  gunzipSync(readFileSync(new URL("../fixtures/conformance.json.gz", import.meta.url))).toString(
+    "utf8",
+  ),
 ) as Fixture;
 
 const places = (state: GameState): string =>
@@ -55,7 +59,7 @@ describe("conformance with the Swift engine", () => {
   for (const game of fixture.games) {
     const name =
       `${game.ruleSet}/${game.boardSetup}/${game.boardWrap}` +
-      `${game.blenderBattles ? "/battles" : ""} (seed ${game.seed})`;
+      `${game.blenderBattles ? "/battles" : ""} by ${game.driver} (seed ${game.seed})`;
 
     it(`replays ${name}`, () => {
       let state = newGame({
@@ -75,10 +79,14 @@ describe("conformance with the Swift engine", () => {
             .toEqual(expected.legalBefore);
         }
 
-        const action = legal[0];
-        expect(action, `no legal action at step ${index} of ${name}`).toBeDefined();
-        expect(describeAction(action!), `chosen action at step ${index} of ${name}`)
-          .toBe(expected.action);
+        // The port does not reproduce the driver's *choice* — that is a property of the
+        // fixture generator, not of the rules. It has to agree that the chosen action was
+        // available, which is the claim that matters, and then produce the same result
+        // from it. That also lets the generator use drivers the port knows nothing about,
+        // such as the one that chases a Blenderama.
+        const action = legal.find((candidate) => describeAction(candidate) === expected.action);
+        expect(action, `step ${index} of ${name}: ${expected.action} was not legal here`)
+          .toBeDefined();
 
         const transition = apply(state, action!);
         expect(places(transition.state), `position after step ${index} of ${name}`)

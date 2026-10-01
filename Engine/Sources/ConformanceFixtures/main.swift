@@ -9,10 +9,15 @@ import Foundation
 /// specification and this writes it down: every opening, and a long scripted game per
 /// configuration, move by move, with the resulting position and every event.
 ///
-/// The games are driven by "always take the first legal action in sorted order" rather
-/// than by the CPU. That is deterministic without porting any search, and because the
-/// ordering is canonical it walks into blends, deliveries, respawns, wildcard progress,
-/// battles and repetition bans on its own.
+/// The games are driven by scripted choosers rather than by the CPU: deterministic
+/// without porting any search, and reproducible from a seed.
+///
+/// `first` — always the lowest action in canonical order — was the only driver at first,
+/// and it turned out to be a poor explorer. It picks `one.blender.0` over and over, so
+/// across eighteen wildcard games it never once reached a Banana Split or a Blenderama,
+/// never bought a blender back, and never let one respawn. Those rules were ported but
+/// unproven, which is worse than unported. The seeded driver wanders instead, and the
+/// coverage report at the end of this file says what actually got exercised.
 struct Fixture: Encodable {
     let rulesVersion: Int
     let schemaVersion: Int
@@ -20,6 +25,7 @@ struct Fixture: Encodable {
 }
 
 struct Game: Encodable {
+    let driver: String
     let ruleSet: String
     let boardSetup: String
     let boardWrap: String
@@ -127,6 +133,45 @@ func describe(_ outcome: Outcome) -> String {
     }
 }
 
+/// Picks one action from the legal list. Both are pure functions of the position and the
+/// move number, so a port reproduces them without needing the chooser itself.
+enum Driver: String, CaseIterable {
+    case first
+    case wander
+    /// Chases a Blenderama: always blends its own fruit when it can.
+    ///
+    /// Needed because the shutout rule turned Blenderama into a perfect game — measured
+    /// at zero wins in twenty-four CPU matches — so no amount of wandering will ever
+    /// stumble into one, and the most intricate rule in the game would go untested.
+    case selfBlender
+
+    func choose(
+        _ actions: [GameAction], step: Int, seed: UInt64, in currentState: GameState
+    ) -> GameAction? {
+        guard !actions.isEmpty else { return nil }
+        switch self {
+        case .first:
+            return actions[0]
+        case .wander:
+            var generator = SeededGenerator(seed: seed &* 0x9E37_79B9_7F4A_7C15 &+ UInt64(step))
+            return actions[Int(generator.next() % UInt64(actions.count))]
+        case .selfBlender:
+            return actions.first { action in
+                guard case .move(let move) = action,
+                      let piece = selfBlendTarget(of: move, in: currentState) else { return false }
+                return piece
+            } ?? actions[0]
+        }
+    }
+}
+
+/// Whether this move puts a blender onto its own owner's fruit.
+func selfBlendTarget(of move: Move, in state: GameState) -> Bool? {
+    guard let mover = state.piece(with: move.pieceID), mover.kind == .blender else { return nil }
+    guard let occupant = state.piece(at: move.destination) else { return nil }
+    return occupant.owner == mover.owner && occupant.kind != .blender ? true : nil
+}
+
 var games: [Game] = []
 var seed: UInt64 = 1
 
@@ -134,6 +179,7 @@ for ruleSet in RuleSet.allCases {
     for setup in BoardSetup.allCases {
         for wrap in BoardWrap.allCases {
             for battles in [false, true] {
+              for driver in Driver.allCases {
                 let starting: PlayerID = seed.isMultiple(of: 2) ? .one : .two
                 var state = GameSetup.newGame(
                     startingPlayer: starting,
@@ -148,7 +194,9 @@ for ruleSet in RuleSet.allCases {
 
                 while !state.status.isOver, steps.count < 150 {
                     let legal = RulesEngine.legalActions(in: state).sorted()
-                    guard let action = legal.first else { break }
+                    guard let action = driver.choose(
+                        legal, step: steps.count, seed: seed, in: state
+                    ) else { break }
                     guard let transition = try? RulesEngine.apply(action, to: state) else { break }
                     steps.append(
                         Step(
@@ -166,6 +214,7 @@ for ruleSet in RuleSet.allCases {
 
                 games.append(
                     Game(
+                        driver: driver.rawValue,
                         ruleSet: ruleSet.rawValue,
                         boardSetup: setup.rawValue,
                         boardWrap: wrap.rawValue,
@@ -178,6 +227,7 @@ for ruleSet in RuleSet.allCases {
                     )
                 )
                 seed += 1
+              }
             }
         }
     }
@@ -204,5 +254,25 @@ try data.write(to: destination)
 let totalSteps = games.reduce(0) { $0 + $1.steps.count }
 let finished = games.filter { $0.outcome != nil }.count
 print("wrote \(games.count) games, \(totalSteps) moves, \(finished) finished")
+
+// What the fixtures actually exercise. Printed because "the rule is ported" and "the
+// rule is covered" are different claims, and only one of them is worth making.
+var coverage: [String: Int] = [:]
+for game in games {
+    for step in game.steps {
+        for event in step.events {
+            let name = event.split(separator: " ").first.map(String.init) ?? ""
+            coverage[name, default: 0] += 1
+        }
+    }
+    if let outcome = game.outcome {
+        coverage["outcome:" + outcome.replacingOccurrences(of: "one ", with: "")
+            .replacingOccurrences(of: "two ", with: ""), default: 0] += 1
+    }
+}
+print("  coverage:")
+for (name, count) in coverage.sorted(by: { $0.key < $1.key }) {
+    print("    \(count)\t\(name)")
+}
 print("  rules \(RulesEngine.rulesVersion), schema \(MatchPayload.currentSchemaVersion)")
 print("  \(data.count) bytes → \(destination.path)")

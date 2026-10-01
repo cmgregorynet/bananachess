@@ -1,2 +1,5 @@
 node_modules/
 dist/
+
+# The generated fixture is committed gzipped; the raw file is not.
+fixtures/conformance.json

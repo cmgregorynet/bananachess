@@ -8,7 +8,7 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "fixtures": "cd ../Engine && swift run ConformanceFixtures ../Web/fixtures/conformance.json"
+    "fixtures": "cd ../Engine && swift run ConformanceFixtures ../Web/fixtures/conformance.json && gzip -9 -f ../Web/fixtures/conformance.json"
   },
   "devDependencies": {
     "@types/node": "^26.6.3",

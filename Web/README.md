@@ -51,9 +51,26 @@ Two things worth recording, because neither would have been found by reading:
   legal moves, the full turn pipeline, wildcards, blender battles, and the repetition rule.
 - `src/ui/` — the board, drawn as SVG from the app's own piece curves and palette, so the
   web version reads as the same game rather than a second artist's impression of it.
-- `src/main.ts` — pass-and-play on one screen, with the board, edges, rules and battles
-  pickers, and the self-blend confirmation.
-- `test/` — the conformance suite above, plus jsdom tests over the board.
+- `src/evaluation.ts`, `src/engine/cpu.ts` — the computer opponent: a one-ply scorer for
+  Easy and Medium, alpha-beta with iterative deepening and a transposition table for Hard.
+- `src/ui/` — also the wildcard trackers, so an alternate win is something you can see
+  coming and go and stop.
+- `src/main.ts` — pass-and-play or against the computer, with the opponent, board, edges,
+  rules and battles pickers, and the self-blend confirmation.
+- `test/` — the conformance suite above, plus jsdom tests over the board and a CPU suite.
+
+### The CPU is held to a different standard from the rules
+
+The rules must match Swift exactly: a port that applies them differently is wrong, and
+two devices would disagree about the same match. The CPU is a heuristic, so a port that
+plays *differently but sensibly* is correct. Its tests check that it only ever picks legal
+moves, finishes matches, is reproducible from a seed, keeps the difficulty ladder, and
+stays inside its time budget — not that it chooses what Swift would choose.
+
+Its budgets are lower than the app's on purpose: this search runs on the page's own
+thread, where a two-second search is two seconds of frozen tab. The board is painted
+before the move is taken for the same reason. A worker is the obvious next step if those
+budgets ever rise.
 
 ```sh
 npm run dev      # http://localhost:5173

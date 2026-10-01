@@ -1,3 +1,5 @@
+import type { CPUDifficulty } from "./engine/cpu.js";
+import { difficultyBlurb, difficultyName, selectAction } from "./engine/cpu.js";
 import { apply, legalActions, legalMovesForPiece, RulesError } from "./engine/rules.js";
 import { newGame } from "./engine/setup.js";
 import type { GameAction, Outcome } from "./engine/state.js";
@@ -5,12 +7,14 @@ import { pieceAt, pieceWithID } from "./engine/state.js";
 import type { BoardSetup, BoardWrap, PieceKind, PlayerID, Position, RuleSet } from "./engine/types.js";
 import { baseValue, samePosition } from "./engine/types.js";
 import { renderBoard } from "./ui/board.js";
+import { describeTrackers, renderTrackers } from "./ui/trackers.js";
 
 interface Settings {
   ruleSet: RuleSet;
   boardSetup: BoardSetup;
   boardWrap: BoardWrap;
   blenderBattles: boolean;
+  opponent: "human" | CPUDifficulty;
 }
 
 const SETTINGS_KEY = "bananachess.settings";
@@ -20,7 +24,11 @@ const defaultSettings: Settings = {
   boardSetup: "standard",
   boardWrap: "flat",
   blenderBattles: false,
+  opponent: "human",
 };
+
+/** The human always plays player one against the computer. */
+const HUMAN: PlayerID = "one";
 
 function loadSettings(): Settings {
   try {
@@ -47,10 +55,45 @@ let settings = loadSettings();
 let state = newGame(settings);
 let selected: string | null = null;
 let pendingSelfBlend: GameAction | null = null;
+let thinking = false;
+
+const computerPlays = (): boolean => settings.opponent !== "human";
+const isComputersTurn = (): boolean =>
+  computerPlays() && state.status.kind !== "ended" && state.activePlayer !== HUMAN;
+
+/** The search runs on the page's own thread, so the board is painted first and the move
+ *  taken after — otherwise the tap that triggered it would never be drawn. A worker would
+ *  be better and is the obvious next step if the budgets ever rise. */
+function takeComputerTurnIfNeeded(): void {
+  if (!isComputersTurn() || thinking) return;
+  thinking = true;
+  render();
+takeComputerTurnIfNeeded();
+  setTimeout(() => {
+    const difficulty = settings.opponent as CPUDifficulty;
+    const action = selectAction(state, { difficulty });
+    thinking = false;
+    if (!action) {
+      render();
+      return;
+    }
+    try {
+      state = apply(state, action).state;
+    } catch {
+      // A move the engine refuses is not a move; leave the turn where it is.
+    }
+    selected = null;
+    render();
+    takeComputerTurnIfNeeded();
+  }, 60);
+}
 
 const app = document.querySelector<HTMLElement>("#app")!;
 
-const nameOf = (player: PlayerID): string => (player === "one" ? "Player One" : "Player Two");
+const nameOf = (player: PlayerID): string => {
+  if (computerPlays()) return player === HUMAN ? "You" : "Computer";
+  return player === "one" ? "Player One" : "Player Two";
+};
 
 const describeOutcome = (outcome: Outcome): string => {
   if (outcome.kind === "draw") return "A draw — level on points.";
@@ -64,7 +107,8 @@ const describeOutcome = (outcome: Outcome): string => {
 /** Legal destinations win the tap over re-selection, because a blender may land on its
  *  owner's own fruit — treating those as selection would make self-blending unreachable. */
 function onSquare(position: Position): void {
-  if (state.status.kind === "ended") return;
+  if (state.status.kind === "ended" || thinking) return;
+  if (computerPlays() && state.activePlayer !== HUMAN) return;
 
   if (selected) {
     const move = legalMovesForPiece(state, selected).find(
@@ -99,13 +143,16 @@ function commit(action: GameAction): void {
     } else throw error;
   }
   render();
+  takeComputerTurnIfNeeded();
 }
 
 function restartMatch(): void {
   state = newGame(settings);
   selected = null;
   pendingSelfBlend = null;
+  thinking = false;
   render();
+  takeComputerTurnIfNeeded();
 }
 
 function choice<T extends string>(
@@ -169,7 +216,18 @@ function render(): void {
     const value = document.createElement("span");
     value.className = "value";
     value.textContent = String(state.scores[player]);
-    card.append(name, value);
+    const heading = document.createElement("div");
+    heading.className = "score-heading";
+    heading.append(name, value);
+    card.append(heading);
+
+    if (state.ruleSet === "wildcard") {
+      const trackers = document.createElement("div");
+      trackers.className = "trackers";
+      renderTrackers(trackers, state, player);
+      trackers.setAttribute("aria-label", `${nameOf(player)}: ${describeTrackers(state, player)}`);
+      card.append(trackers);
+    }
     scores.append(card);
   }
   app.append(scores);
@@ -180,7 +238,9 @@ function render(): void {
   status.textContent =
     state.status.kind === "ended"
       ? describeOutcome(state.status.outcome)
-      : `${nameOf(state.activePlayer)} to move`;
+      : thinking
+        ? `${difficultyName(settings.opponent as CPUDifficulty)} computer is thinking…`
+        : `${nameOf(state.activePlayer)} to move`;
   app.append(status);
 
   const boardHost = document.createElement("div");
@@ -219,6 +279,12 @@ function render(): void {
   app.append(controls);
 
   app.append(
+    choice("Opponent", ["human", "easy", "medium", "hard"] as const, settings.opponent,
+      { human: "Two player", easy: "Easy", medium: "Medium", hard: "Hard" },
+      settings.opponent === "human"
+        ? "Pass the device back and forth."
+        : difficultyBlurb(settings.opponent),
+      (opponent) => updateSettings({ opponent })),
     choice("Board", ["standard", "blendy", "random"] as const, settings.boardSetup,
       { standard: "Standard", blendy: "Blendy", random: "Random" },
       BOARD_BLURBS[settings.boardSetup], (boardSetup) => updateSettings({ boardSetup })),
@@ -276,3 +342,4 @@ function selfBlendDialog(move: GameAction & { kind: "move" }): HTMLDialogElement
 }
 
 render();
+takeComputerTurnIfNeeded();
