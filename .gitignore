@@ -20,3 +20,7 @@ build/
 xcuserdata/
 *.xcuserstate
 *.moved-aside
+
+# Web
+Web/node_modules/
+Web/dist/
