@@ -49,12 +49,24 @@ Two things worth recording, because neither would have been found by reading:
 
 - `src/engine/` — the rules: board geometry and edges, setup including the random deal,
   legal moves, the full turn pipeline, wildcards, blender battles, and the repetition rule.
-- `test/conformance.test.ts` — the suite above.
+- `src/ui/` — the board, drawn as SVG from the app's own piece curves and palette, so the
+  web version reads as the same game rather than a second artist's impression of it.
+- `src/main.ts` — pass-and-play on one screen, with the board, edges, rules and battles
+  pickers, and the self-blend confirmation.
+- `test/` — the conformance suite above, plus jsdom tests over the board.
+
+```sh
+npm run dev      # http://localhost:5173
+npm run build    # 23 kB of JavaScript, 8.5 kB gzipped
+```
 
 ## What is not here yet
 
-- **The UI.** Nothing is drawn.
-- **The CPU.** `Evaluation` and `CPUPlayer` are not ported, so there is no opponent to
-  play against yet. The fixtures do not need it — they are driven by canonical ordering —
-  so the engine is proven without it.
+- **The CPU.** `Evaluation` and `CPUPlayer` are not ported, so the only mode is
+  pass-and-play. The fixtures do not need it — they are driven by canonical ordering — so
+  the engine is proven without it.
 - **Online play.** `MatchLink`, `MatchPayload` and the services are iOS-side.
+- **The animation.** Moves land instantly; there is no equivalent of the app's event
+  replay, blend bursts or splatter yet.
+- **Wildcard trackers.** The rules run, but there is nothing on screen showing smoothie
+  progress or a Banana Split count.

@@ -1,0 +1,106 @@
+/* Warm paper, soft ink, one amber accent. Ported from the app's art direction: nothing
+   here is saturated, and the darkest value is the ink rather than black. */
+:root {
+  --paper: #e7d8d0;
+  --cream: #f8e2d5;
+  --ink: #61524d;
+  --ink-soft: rgba(97, 82, 77, 0.55);
+  --ink-faint: rgba(97, 82, 77, 0.22);
+  --amber: #e8a24a;
+  color-scheme: light;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--paper);
+  color: var(--ink);
+  font-family: ui-serif, Georgia, "Times New Roman", serif;
+  min-height: 100dvh;
+}
+
+main {
+  max-width: 34rem;
+  margin: 0 auto;
+  padding: 1rem 1rem 2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.9rem;
+}
+
+h1 { font-size: 1.9rem; margin: 0.4rem 0 0; font-weight: 600; }
+.subtitle { margin: 0; color: var(--ink-soft); font-size: 0.95rem; }
+
+.board {
+  width: 100%;
+  height: auto;
+  display: block;
+  border-radius: 6px;
+  outline: 2px solid rgba(97, 82, 77, 0.7);
+  outline-offset: 5px;
+  background: var(--cream);
+}
+
+.square { cursor: pointer; }
+.square:focus-visible { outline: 3px solid var(--amber); outline-offset: -3px; }
+
+.scores { display: flex; gap: 0.6rem; }
+
+.score {
+  flex: 1;
+  background: var(--cream);
+  border: 1px solid var(--ink-faint);
+  border-radius: 12px;
+  padding: 0.55rem 0.75rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+}
+.score.active { border-color: var(--amber); border-width: 2px; }
+.score .name { font-size: 0.85rem; color: var(--ink-soft); }
+.score .value { font-size: 1.35rem; font-variant-numeric: tabular-nums; }
+
+.status { text-align: center; min-height: 1.4rem; font-size: 1rem; }
+.status .amber { color: #a86a16; }
+
+.controls { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
+button {
+  font: inherit;
+  color: var(--ink);
+  background: var(--cream);
+  border: 1px solid var(--ink-faint);
+  border-radius: 999px;
+  padding: 0.45rem 0.95rem;
+  cursor: pointer;
+}
+button:hover { border-color: var(--ink-soft); }
+button[aria-pressed="true"] { border-color: var(--amber); border-width: 2px; background: #f7e3c9; }
+
+fieldset {
+  border: 1px solid var(--ink-faint);
+  border-radius: 12px;
+  padding: 0.6rem 0.8rem 0.8rem;
+  margin: 0;
+  background: var(--cream);
+}
+legend { font-size: 0.85rem; color: var(--ink-soft); padding: 0 0.35rem; }
+.options { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.blurb { margin: 0.5rem 0 0; font-size: 0.8rem; color: var(--ink-soft); }
+
+dialog {
+  border: 1px solid var(--ink-faint);
+  border-radius: 14px;
+  background: var(--cream);
+  color: var(--ink);
+  max-width: 22rem;
+  padding: 1.1rem;
+}
+dialog::backdrop { background: rgba(97, 82, 77, 0.35); }
+dialog p { margin: 0 0 1rem; }
+dialog .controls { justify-content: flex-end; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .board { transition: opacity 0.2s ease; }
+}
