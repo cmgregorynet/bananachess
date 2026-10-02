@@ -77,13 +77,44 @@ npm run dev      # http://localhost:5173
 npm run build    # 23 kB of JavaScript, 8.5 kB gzipped
 ```
 
+## Live play, and hosting
+
+One Cloudflare Worker serves both halves: the built site from an assets binding, and a
+WebSocket per match from a Durable Object. One deploy, one origin, no CORS to arrange.
+
+**The server runs the rules.** It is not a relay — it holds the authoritative state and
+puts every submitted action through the same engine the clients do, which is only
+possible because the port is TypeScript and the Worker imports the identical module. A
+client cannot play an illegal move by asking nicely, and two clients cannot drift apart,
+because neither of them is deciding anything. Verified against a locally running Worker:
+an out-of-turn move is refused, and a legal one lands on the other client.
+
+A Durable Object is the right shape because it is what a match already is — one
+addressable thing with its own state and its own sockets, which Cloudflare guarantees
+exists in a single place. Two players cannot reach two copies of the same room.
+
+```sh
+npm run serve    # wrangler dev, the whole thing locally on one port
+npm run deploy   # build, then wrangler deploy
+```
+
+Deploying needs `npx wrangler login` once. There is no database and no scheduled work, so
+the free tier covers it comfortably.
+
+### Why not GitHub Pages
+
+This repository is private, and Pages from a private repository needs a paid plan. That
+is worth knowing before reaching for it — but it would not have been enough anyway, since
+Pages serves static files only and live play needs something that can hold a socket.
+
 ## What is not here yet
 
 - **The CPU.** `Evaluation` and `CPUPlayer` are not ported, so the only mode is
   pass-and-play. The fixtures do not need it — they are driven by canonical ordering — so
   the engine is proven without it.
-- **Online play.** `MatchLink`, `MatchPayload` and the services are iOS-side.
 - **The animation.** Moves land instantly; there is no equivalent of the app's event
   replay, blend bursts or splatter yet.
-- **Wildcard trackers.** The rules run, but there is nothing on screen showing smoothie
-  progress or a Banana Split count.
+- **Rematch.** Leaving a finished online match means creating a new one and sending a
+  fresh link.
+- **Spectators** can watch but the seats are never released, so a player who abandons a
+  match holds their side until the room is gone.

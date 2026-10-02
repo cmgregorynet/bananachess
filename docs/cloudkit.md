@@ -55,11 +55,14 @@ Notifications**, then let Xcode refresh the provisioning profile.
 
 ## 3. Deploy the schema before any TestFlight build
 
-> **Outstanding right now.** Build 1 is already uploaded and it ships with iCloud play
-> switched on, signed for the **Production** CloudKit environment. Until the schema is
-> deployed there, a tester who taps Invite by Link will reach the lobby and fail when it
-> tries to create the match. Local runs from Xcode are unaffected — those talk to
-> Development.
+> **Paused, 2 October 2026.** `BananaChessCloudKitEnabled` is back to `false`, so the
+> next build falls back to correspondence links rather than offering an iCloud lobby that
+> cannot create a match. Build 1 in App Store Connect still has it switched *on* and
+> still has no production schema, so do not hand that build to testers expecting iCloud
+> play — it will fail at the point of creating a match.
+>
+> Turning it back on is this file from the top: the capabilities are already in place, so
+> it is the flag, the schema deployment, and a new build.
 
 
 CloudKit keeps **development** and **production** environments apart, and they do not

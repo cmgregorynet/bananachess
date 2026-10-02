@@ -8,6 +8,8 @@ import type { BoardSetup, BoardWrap, PieceKind, PlayerID, Position, RuleSet } fr
 import { baseValue, samePosition } from "./engine/types.js";
 import { renderBoard } from "./ui/board.js";
 import { describeTrackers, renderTrackers } from "./ui/trackers.js";
+import type { OnlineStatus } from "./ui/online.js";
+import { OnlineMatch, linkForRoom, newRoomID, roomFromLocation } from "./ui/online.js";
 
 interface Settings {
   ruleSet: RuleSet;
@@ -57,6 +59,59 @@ let selected: string | null = null;
 let pendingSelfBlend: GameAction | null = null;
 let thinking = false;
 
+/** Online play. The client never decides anything — it draws what the server sends. */
+let online: OnlineMatch | null = null;
+let onlineSeat: PlayerID | null = null;
+let onlineStatus: OnlineStatus = { kind: "connecting" };
+let onlineMoveNumber = 0;
+let notice: string | null = null;
+
+const isOnline = (): boolean => online !== null;
+
+function startOnline(roomID: string, create: boolean): void {
+  online?.close();
+  onlineSeat = null;
+  onlineMoveNumber = 0;
+  notice = null;
+  online = new OnlineMatch(roomID, {
+    onState: (next, moveNumber) => {
+      state = next;
+      onlineMoveNumber = moveNumber;
+      selected = null;
+      pendingSelfBlend = null;
+      render();
+    },
+    onSeat: (seat) => {
+      onlineSeat = seat;
+      render();
+    },
+    onStatus: (status) => {
+      onlineStatus = status;
+      render();
+    },
+    onError: (message) => {
+      notice = message;
+      render();
+    },
+  });
+  online.connect();
+  if (create) {
+    const { opponent: _opponent, ...rules } = settings;
+    online.create(rules);
+  }
+  history.replaceState(null, "", linkForRoom(roomID));
+  render();
+}
+
+function leaveOnline(): void {
+  online?.close();
+  online = null;
+  onlineSeat = null;
+  notice = null;
+  history.replaceState(null, "", location.pathname);
+  restartMatch();
+}
+
 const computerPlays = (): boolean => settings.opponent !== "human";
 const isComputersTurn = (): boolean =>
   computerPlays() && state.status.kind !== "ended" && state.activePlayer !== HUMAN;
@@ -67,8 +122,14 @@ const isComputersTurn = (): boolean =>
 function takeComputerTurnIfNeeded(): void {
   if (!isComputersTurn() || thinking) return;
   thinking = true;
+  const joining = roomFromLocation();
+if (joining) {
+  // Arriving on somebody's link: join their match rather than starting a fresh one.
+  startOnline(joining, false);
+} else {
   render();
-takeComputerTurnIfNeeded();
+  takeComputerTurnIfNeeded();
+}
   setTimeout(() => {
     const difficulty = settings.opponent as CPUDifficulty;
     const action = selectAction(state, { difficulty });
@@ -108,7 +169,8 @@ const describeOutcome = (outcome: Outcome): string => {
  *  owner's own fruit — treating those as selection would make self-blending unreachable. */
 function onSquare(position: Position): void {
   if (state.status.kind === "ended" || thinking) return;
-  if (computerPlays() && state.activePlayer !== HUMAN) return;
+  if (isOnline() && state.activePlayer !== onlineSeat) return;
+  if (!isOnline() && computerPlays() && state.activePlayer !== HUMAN) return;
 
   if (selected) {
     const move = legalMovesForPiece(state, selected).find(
@@ -132,6 +194,14 @@ function onSquare(position: Position): void {
 }
 
 function commit(action: GameAction): void {
+  if (online) {
+    // Sent, not applied: the board moves when the server says it has.
+    online.play(action, onlineMoveNumber);
+    selected = null;
+    pendingSelfBlend = null;
+    render();
+    return;
+  }
   try {
     state = apply(state, action).state;
     selected = null;
@@ -195,6 +265,52 @@ function updateSettings(change: Partial<Settings>): void {
   restartMatch();
 }
 
+function onlineStatusText(): string {
+  if (onlineStatus.kind === "lost") return onlineStatus.message;
+  if (onlineStatus.kind === "connecting") return "Connecting…";
+  if (onlineStatus.kind === "watching") return "Watching this match";
+  if (state.status.kind === "ended") return describeOutcome(state.status.outcome);
+  if (onlineStatus.kind === "waiting") return "Waiting for the other player to join…";
+  return state.activePlayer === onlineSeat ? "Your move" : "Their move";
+}
+
+function onlineControls(): HTMLElement {
+  const panel = document.createElement("div");
+  panel.className = "controls";
+
+  const share = document.createElement("button");
+  share.type = "button";
+  share.textContent = "Copy invite link";
+  share.addEventListener("click", () => {
+    void navigator.clipboard.writeText(location.href).then(
+      () => {
+        notice = "Link copied. Send it to whoever you want to play.";
+        render();
+      },
+      () => {
+        notice = location.href;
+        render();
+      },
+    );
+  });
+
+  const leave = document.createElement("button");
+  leave.type = "button";
+  leave.textContent = "Leave match";
+  leave.addEventListener("click", leaveOnline);
+
+  panel.append(share, leave);
+
+  if (onlineSeat && state.status.kind !== "ended") {
+    const resign = document.createElement("button");
+    resign.type = "button";
+    resign.textContent = "Resign";
+    resign.addEventListener("click", () => online?.resign());
+    panel.append(resign);
+  }
+  return panel;
+}
+
 function render(): void {
   app.replaceChildren();
 
@@ -235,13 +351,22 @@ function render(): void {
   const status = document.createElement("p");
   status.className = "status";
   status.setAttribute("role", "status");
-  status.textContent =
-    state.status.kind === "ended"
+  status.textContent = isOnline()
+    ? onlineStatusText()
+    : state.status.kind === "ended"
       ? describeOutcome(state.status.outcome)
       : thinking
         ? `${difficultyName(settings.opponent as CPUDifficulty)} computer is thinking…`
         : `${nameOf(state.activePlayer)} to move`;
   app.append(status);
+
+  if (notice) {
+    const warning = document.createElement("p");
+    warning.className = "status";
+    warning.setAttribute("role", "alert");
+    warning.textContent = notice;
+    app.append(warning);
+  }
 
   const boardHost = document.createElement("div");
   renderBoard(boardHost, {
@@ -278,6 +403,14 @@ function render(): void {
   }
   app.append(controls);
 
+  if (isOnline()) {
+    app.append(onlineControls());
+    if (pendingSelfBlend && pendingSelfBlend.kind === "move") {
+      app.append(selfBlendDialog(pendingSelfBlend));
+    }
+    return;
+  }
+
   app.append(
     choice("Opponent", ["human", "easy", "medium", "hard"] as const, settings.opponent,
       { human: "Two player", easy: "Easy", medium: "Medium", hard: "Hard" },
@@ -302,6 +435,17 @@ function render(): void {
       "Blenders fight for a square instead of just taking it. Half your standing fruit, plus one for attacking, plus a die each.",
       (value) => updateSettings({ blenderBattles: value === "on" })),
   );
+
+  // Hosting a match keeps whatever is chosen above: the creator settles the rules, and
+  // they travel to whoever joins, because the server deals the board.
+  const invite = document.createElement("div");
+  invite.className = "controls";
+  const host = document.createElement("button");
+  host.type = "button";
+  host.textContent = "Play online — create a match";
+  host.addEventListener("click", () => startOnline(newRoomID(), true));
+  invite.append(host);
+  app.append(invite);
 
   if (pendingSelfBlend && pendingSelfBlend.kind === "move") {
     app.append(selfBlendDialog(pendingSelfBlend));
@@ -341,5 +485,11 @@ function selfBlendDialog(move: GameAction & { kind: "move" }): HTMLDialogElement
   return dialog;
 }
 
-render();
-takeComputerTurnIfNeeded();
+const joining = roomFromLocation();
+if (joining) {
+  // Arriving on somebody's link: join their match rather than starting a fresh one.
+  startOnline(joining, false);
+} else {
+  render();
+  takeComputerTurnIfNeeded();
+}
