@@ -23,19 +23,100 @@ public enum CPUDifficulty: String, Codable, Sendable, CaseIterable, Identifiable
         }
     }
 
-    /// Search stops deepening past this. The hard cap below it is absolute.
-    var softTimeBudget: Duration {
-        switch self {
-        case .easy: .milliseconds(50)
-        case .medium: .milliseconds(300)
-        case .hard: .milliseconds(1_500)
+    public var plan: SearchPlan { SearchPlan.standard(for: self) }
+}
+
+/// What a difficulty actually *is*, as data rather than three branches.
+///
+/// Pulling these out turned a level into a handful of numbers that can be measured
+/// against each other, which is the only way to answer "make it twice as hard" with
+/// anything but a shrug. It also makes the levels benchmarkable: a duel between two
+/// plans runs in seconds if the budgets are cut, and in minutes if they are not.
+public struct SearchPlan: Sendable, Hashable {
+    /// How far ahead to look, if the clock allows. One is a plain one-ply pick with no
+    /// lookahead at all.
+    public var depth: Int
+    /// What fraction of the ranked moves to choose randomly between. One takes any legal
+    /// move at all; anything at or below zero always plays the best one it found.
+    public var candidateFraction: Double
+    /// Stops deepening past this. The hard cap below it is absolute.
+    public var softTimeBudget: Duration
+    public var hardTimeCap: Duration
+    /// How close two lines must be before the tie is broken on banking points now.
+    /// Zero leaves the search's own judgement alone.
+    public var tempoMargin: Int
+
+    public init(
+        depth: Int,
+        candidateFraction: Double,
+        softTimeBudget: Duration,
+        hardTimeCap: Duration,
+        tempoMargin: Int = 0
+    ) {
+        self.depth = depth
+        self.candidateFraction = candidateFraction
+        self.softTimeBudget = softTimeBudget
+        self.hardTimeCap = hardTimeCap
+        self.tempoMargin = tempoMargin
+    }
+
+    /// The shipped levels.
+    ///
+    /// Each was roughly doubled in strength on 6 October 2026, measured as a duel against
+    /// the level it replaced — see `DECISIONS.md`. Easy used to move entirely at random,
+    /// which is not an opponent so much as a board that shuffles; Medium looked exactly
+    /// one move ahead; Hard searched with a transposition table that was misfiling its
+    /// bounds and throwing away much of what it had worked out.
+    public static func standard(for difficulty: CPUDifficulty) -> SearchPlan {
+        switch difficulty {
+        case .easy:
+            // Still a beginner's opponent: it looks one move ahead and then picks
+            // carelessly among the better half, so it takes a free piece when one is in
+            // front of it and otherwise wanders.
+            SearchPlan(
+                depth: 1, candidateFraction: 0.5,
+                softTimeBudget: .milliseconds(50), hardTimeCap: .milliseconds(600)
+            )
+        case .medium:
+            // Searches now rather than looking exactly one move ahead, but kept brisk:
+            // a middle setting that stalls a second a move is a worse opponent than one
+            // that answers at once, whatever it plays.
+            SearchPlan(
+                depth: 4, candidateFraction: 0,
+                softTimeBudget: .milliseconds(220), hardTimeCap: .milliseconds(450),
+                tempoMargin: 48
+            )
+        case .hard:
+            // Deliberately the same clock as before. Hard was already at the limit of
+            // what is pleasant on a phone — measured at four seconds a move when the
+            // budget was raised, which reads as a hang — so every bit of the improvement
+            // has to come from searching better in the time it already had.
+            SearchPlan(
+                depth: 12, candidateFraction: 0,
+                softTimeBudget: .milliseconds(1_500), hardTimeCap: .seconds(2)
+            )
         }
     }
 
-    var hardTimeCap: Duration {
-        switch self {
-        case .easy, .medium: .milliseconds(600)
-        case .hard: .seconds(2)
+    /// What the levels were before that, kept so the improvement stays measurable rather
+    /// than asserted.
+    public static func previous(for difficulty: CPUDifficulty) -> SearchPlan {
+        switch difficulty {
+        case .easy:
+            SearchPlan(
+                depth: 1, candidateFraction: 1,
+                softTimeBudget: .milliseconds(50), hardTimeCap: .milliseconds(600)
+            )
+        case .medium:
+            SearchPlan(
+                depth: 1, candidateFraction: 0,
+                softTimeBudget: .milliseconds(300), hardTimeCap: .milliseconds(600)
+            )
+        case .hard:
+            SearchPlan(
+                depth: 8, candidateFraction: 0,
+                softTimeBudget: .milliseconds(1_500), hardTimeCap: .seconds(2)
+            )
         }
     }
 }
@@ -48,11 +129,20 @@ public struct CPUPlayer: Sendable {
     public var weights: EvaluationWeights
     /// Set for reproducible play in tests; nil uses the system generator.
     public var seed: UInt64?
+    /// Overridable so two levels can be put head to head, and so a benchmark can cut the
+    /// budgets without changing what is being compared.
+    public var plan: SearchPlan
 
-    public init(difficulty: CPUDifficulty, seed: UInt64? = nil, weights: EvaluationWeights = EvaluationWeights()) {
+    public init(
+        difficulty: CPUDifficulty,
+        seed: UInt64? = nil,
+        weights: EvaluationWeights = EvaluationWeights(),
+        plan: SearchPlan? = nil
+    ) {
         self.difficulty = difficulty
         self.seed = seed
         self.weights = weights
+        self.plan = plan ?? difficulty.plan
     }
 
     /// Convenience for callers that only care about moves.
@@ -65,17 +155,12 @@ public struct CPUPlayer: Sendable {
         let moves = RulesEngine.legalActions(in: state)
         guard !moves.isEmpty else { return nil }
 
-        switch difficulty {
-        case .easy:
-            return pickRandom(from: moves, in: state)
-        case .medium:
-            return pickBestOnePly(from: moves, in: state)
-        case .hard:
-            return pickBestSearch(from: moves, in: state)
-        }
+        // One path for every level now. A level is its plan: how deep it looks, and how
+        // carelessly it chooses among what it found.
+        if plan.candidateFraction >= 1 { return pickRandom(from: moves, in: state) }
+        if plan.depth <= 1 { return pickShallow(from: moves, in: state) }
+        return pickBestSearch(from: moves, in: state)
     }
-
-    // MARK: - Easy
 
     private func pickRandom(from moves: [GameAction], in state: GameState) -> GameAction {
         guard seed != nil else { return moves.randomElement()! }
@@ -83,31 +168,46 @@ public struct CPUPlayer: Sendable {
         return moves.randomElement(using: &generator)!
     }
 
-    // MARK: - Medium
-
-    private func pickBestOnePly(from moves: [GameAction], in state: GameState) -> GameAction {
+    /// One ply, then a pick from the better end of what it saw. With a fraction of zero
+    /// this is the old Medium exactly; with a half it is an opponent that spots a free
+    /// piece but will not plan for one.
+    private func pickShallow(from moves: [GameAction], in state: GameState) -> GameAction {
         let player = state.activePlayer
         var scored: [(move: GameAction, value: Int)] = []
         scored.reserveCapacity(moves.count)
 
         for move in moves {
-            guard let transition = try? RulesEngine.apply(move, to: state, battles: .expected)
-            else { continue }
+            guard let transition = try? RulesEngine.apply(
+                move, to: state, battles: .expected, enforcingRepetition: false
+            ) else { continue }
             scored.append((move, Evaluation.score(transition.state, for: player, weights: weights)))
         }
-        guard let best = scored.map(\.value).max() else { return moves[0] }
-        let tied = scored.filter { $0.value == best }.map(\.move)
-        return breakTie(among: tied, in: state)
+        guard !scored.isEmpty else { return moves[0] }
+        return choose(from: scored, in: state)
     }
 
-    // MARK: - Hard
+    /// Picks among the top slice of the ranked moves. Ties at the very top are broken the
+    /// same way they always were, so a level with a fraction of zero is unchanged.
+    private func choose(
+        from scored: [(move: GameAction, value: Int)], in state: GameState
+    ) -> GameAction {
+        let ranked = scored.sorted { ($0.value, $0.move) > ($1.value, $1.move) }
+        guard plan.candidateFraction > 0 else {
+            let best = ranked[0].value
+            return breakTie(among: ranked.filter { $0.value == best }.map(\.move), in: state)
+        }
+        let pool = max(1, Int((Double(ranked.count) * plan.candidateFraction).rounded(.up)))
+        return breakTie(among: Array(ranked.prefix(pool)).map(\.move), in: state)
+    }
+
+    // MARK: - Searching
 
     private func pickBestSearch(from moves: [GameAction], in state: GameState) -> GameAction {
         let player = state.activePlayer
         let clock = ContinuousClock()
         let start = clock.now
-        let softDeadline = start + difficulty.softTimeBudget
-        let hardDeadline = start + difficulty.hardTimeCap
+        let softDeadline = start + plan.softTimeBudget
+        let hardDeadline = start + plan.hardTimeCap
 
         var search = Search(
             root: player,
@@ -119,8 +219,9 @@ public struct CPUPlayer: Sendable {
         let ordered = orderMoves(moves, in: state)
         var best = ordered[0]
         var depth = 2
+        var values: [GameAction: Int] = [:]
 
-        while depth <= Search.maximumDepth {
+        while depth <= min(plan.depth, Search.maximumDepth) {
             if clock.now >= softDeadline { break }
             guard let result = search.bestMove(from: state, moves: ordered, depth: depth) else {
                 // Ran out of time mid-depth: the partial result is untrustworthy, so
@@ -128,11 +229,46 @@ public struct CPUPlayer: Sendable {
                 break
             }
             best = result.move
+            values = result.values
             depth += 1
             // A forced win is found, not improved on.
             if abs(result.value) >= Evaluation.winScore { break }
         }
-        return best
+        return preferringTempo(best, among: values, in: state)
+    }
+
+    /// Breaks a near-tie toward banking the points now.
+    ///
+    /// Deep search has a horizon, and a position where a delivery cannot be interfered
+    /// with looks the same to it whether the points are taken this move or next — both
+    /// lines score, so all that is left is positional noise. Measured at one such
+    /// position: delivering scored 543, shuffling sideways 563, twenty points out of five
+    /// hundred. The search is not wrong, but a player watching a computer shuffle while
+    /// sitting on six free points does not see subtlety, they see a bug.
+    ///
+    /// Per level, and off for Hard, because it is an override of the search's judgement
+    /// and Hard has the best judgement to override — see `DECISIONS.md` for the duel that
+    /// settled that.
+    private func preferringTempo(
+        _ best: GameAction, among values: [GameAction: Int], in state: GameState
+    ) -> GameAction {
+        guard plan.tempoMargin > 0, let bestValue = values[best] else { return best }
+        let contenders = values
+            .filter { $0.value >= bestValue - plan.tempoMargin }
+            .map(\.key)
+        guard contenders.count > 1 else { return best }
+        // Safe against alpha-beta's fail-low values, which are only upper bounds: move
+        // ordering searches high-ranking moves first, so anything this can promote was
+        // searched before the winner and therefore has an exact value.
+        let ranked = contenders
+            .map { (move: $0, rank: Search.staticRank(of: $0, in: state)) }
+            .sorted { ($0.rank, $0.move) > ($1.rank, $1.move) }
+        // Only overrides when the alternative actually banks something; otherwise the
+        // search's own choice stands.
+        guard let front = ranked.first, front.rank > Search.staticRank(of: best, in: state) else {
+            return best
+        }
+        return front.move
     }
 
     // MARK: - Shared
@@ -162,7 +298,10 @@ public struct CPUPlayer: Sendable {
 // MARK: - Alpha-beta search
 
 private struct Search {
-    static let maximumDepth = 8
+    /// Raised from eight once the search stopped paying for enforced legality at every
+    /// node. The clock still decides where it actually stops; this only stops the ceiling
+    /// from being what does.
+    static let maximumDepth = 12
     /// Checking a clock is not free; do it every this-many nodes.
     static let timeCheckInterval = 512
 
@@ -190,6 +329,8 @@ private struct Search {
     struct Result {
         let move: GameAction
         let value: Int
+        /// Every root move's value, so the caller can tell a real preference from a tie.
+        let values: [GameAction: Int]
     }
 
     init(root: PlayerID, weights: EvaluationWeights, clock: ContinuousClock, deadline: ContinuousClock.Instant) {
@@ -202,19 +343,23 @@ private struct Search {
     mutating func bestMove(from state: GameState, moves: [GameAction], depth: Int) -> Result? {
         var alpha = -Evaluation.winScore * 2
         let beta = Evaluation.winScore * 2
-        var best: Result?
+        var best: (move: GameAction, value: Int)?
+        var values: [GameAction: Int] = [:]
 
         for move in moves {
-            guard let transition = try? RulesEngine.apply(move, to: state, battles: .expected)
-            else { continue }
+            guard let transition = try? RulesEngine.apply(
+                move, to: state, battles: .expected, enforcingRepetition: false
+            ) else { continue }
             let value = negamaxed(transition.state, depth: depth - 1, alpha: alpha, beta: beta)
             if timedOut { return nil }
+            values[move] = value
             if best == nil || value > best!.value {
-                best = Result(move: move, value: value)
+                best = (move, value)
                 alpha = max(alpha, value)
             }
         }
-        return best
+        guard let best else { return nil }
+        return Result(move: best.move, value: best.value, values: values)
     }
 
     /// Minimax rather than true negamax: a player with no legal move is skipped, so the
@@ -239,19 +384,35 @@ private struct Search {
             }
         }
 
-        let moves = RulesEngine.legalActions(in: state)
+        // Unenforced inside the search, and this is the difference between looking two
+        // moves ahead and looking five. Since rules 18 every enforced legality query
+        // plays out each candidate move to see whether it repeats, so asking for it at
+        // every node costs a whole extra ply of work per ply of depth. The move finally
+        // played is still taken from a fully enforced list at the root and applied
+        // through the real path, so nothing illegal can escape — the search is merely
+        // allowed to *consider* a repetition it would not be permitted to play.
+        let moves = RulesEngine.legalActions(in: state, enforcingRepetition: false)
         guard !moves.isEmpty else {
             return Evaluation.score(state, for: root, weights: weights)
         }
 
         let maximizing = state.activePlayer == root
+        // Kept, because a stored bound has to be classified against the window this node
+        // was *given*, not the one it narrowed to. Comparing against the mutated values
+        // marked almost everything `exact` — alpha has by then been raised to `best`, so
+        // `best <= alpha` is true only by accident — and an entry claiming to be exact
+        // when it is a bound is a wrong answer handed back with confidence. It is what
+        // made Hard report a losing line as a forced win and stop deepening on it.
+        let originalAlpha = alpha
+        let originalBeta = beta
         var alpha = alpha
         var beta = beta
         var best = maximizing ? Int.min : Int.max
 
         for move in ordered(moves, in: state) {
-            guard let transition = try? RulesEngine.apply(move, to: state, battles: .expected)
-            else { continue }
+            guard let transition = try? RulesEngine.apply(
+                move, to: state, battles: .expected, enforcingRepetition: false
+            ) else { continue }
             let value = negamaxed(transition.state, depth: depth - 1, alpha: alpha, beta: beta)
             if timedOut { return best == Int.min || best == Int.max ? 0 : best }
 
@@ -265,8 +426,11 @@ private struct Search {
             if alpha >= beta { break }
         }
 
+        // Nothing is learned from a node that ran out of time part way through, and
+        // filing it would poison every later lookup at this depth.
+        guard !timedOut else { return best }
         let bound: Bound =
-            if best <= alpha { .upper } else if best >= beta { .lower } else { .exact }
+            if best <= originalAlpha { .upper } else if best >= originalBeta { .lower } else { .exact }
         transpositions[key] = Entry(depth: depth, value: best, bound: bound)
         return best
     }

@@ -91,6 +91,55 @@ game. Both players' runs are dead by a median of turn 43 in Medium self-play, no
 survived 24 matches, and the tracker had to stop announcing "countered" because it became
 the normal state of every match.
 
+**Two of the three CPU levels were set too low; the third was broken.** *Charles, 7
+October 2026 — "the CPU players are all way too easy".*
+
+Easy moved entirely at random, which is a board that shuffles rather than an opponent,
+and Medium looked exactly one move ahead. Both are now measurably stronger: **16–0**
+against the versions they replace, on an identical clock, and the ladder is strict —
+Medium 16–0 over Easy, Hard 12–0 over Medium.
+
+Hard was a different problem, and worth separating from "make it harder":
+
+- **Its transposition table had been misfiling every entry since it was written.** Bounds
+  were classified against the narrowed window rather than the one the node was given, and
+  since alpha has by then been raised to `best`, almost everything was stored as `exact`
+  when it was a bound. That is a wrong answer handed back with confidence, and it is what
+  made Hard call a losing line a forced win and stop deepening on it — the symptom traced
+  weeks earlier and never explained. Entries from timed-out nodes are no longer stored
+  either.
+- **Every search node had been paying for enforced legality since rules 18.** An enforced
+  legality query plays out each candidate move to test for repetition, so asking for it at
+  every node costs an extra ply of work per ply of depth. The search now runs unenforced
+  internally; the move played is still taken from a fully enforced list at the root and
+  applied through the real path, so nothing illegal escapes.
+
+**Hard's clock is deliberately unchanged at 1.5s/2s.** Raising it to 2.5s/4s measured at
+3,669 ms mean and 4,042 ms worst per move, which on a phone reads as a hang rather than as
+a stronger opponent. Every bit of its improvement had to come from searching better in the
+time it already had. The depth ceiling went from 8 to 12 for the same reason: with the
+per-node cost down, the ceiling was at risk of being what stopped the search instead of
+the clock.
+
+**Levels are data now.** `SearchPlan` holds depth, how carelessly a level picks among what
+it found, its budgets, and its tempo margin — with `.previous` kept beside `.standard` so
+"twice as hard" can be *measured* as a duel rather than asserted.
+
+**The tempo margin is per level and off for Hard.** Deep search has a horizon: where a
+delivery cannot be interfered with, taking the points this move and next move are worth
+the same, and all that distinguishes them is positional noise — measured at one position
+as 543 against 563. The search is not wrong, but a player watching a computer shuffle on
+top of six free points sees a bug, so a near-tie breaks toward scoring. It is an override
+of the search's judgement, and Hard has the best judgement to override: with it applied
+globally, Hard against Medium fell from 5–0–3 to 4–4. Isolating it afterwards came out
+5–5 in ten games, which is no detectable effect at that sample size, so the honest
+statement is that the shipped configuration measures 12–0 and the 4–4 may have been noise.
+
+**Benchmarks have to use the real clock.** The first duel of new Hard against old Hard
+returned exactly 8–8, which was the giveaway: with its budget unchanged the two plans were
+identical, so it duelled Hard against itself and measured who moved first. Cutting budgets
+to make duels fast is also what stops Hard being Hard.
+
 **Repetition is keyed on the arrangement, not the position.** *Charles, 29 Aug 2026 —
 `rulesVersion 18`, schema 16.* `boardKey` covers where the pieces stand and whose turn it
 is; `positionKey` keeps the scores for the transposition table. Keying repetition on the
