@@ -9,9 +9,12 @@ describe("a match room", () => {
   let room: MatchRoom;
   let inboxes: Record<string, ServerMessage[]>;
 
-  const connect = (id: string): void => {
+  /** A socket and the player behind it. They are separate on purpose: a real WebSocket
+   *  gets a fresh id every time it opens, so anything keyed on the connection cannot
+   *  survive a reconnect. */
+  const connect = (id: string, player = id): void => {
     inboxes[id] ??= [];
-    room.join({ id, send: (message) => inboxes[id]!.push(message) });
+    room.join({ id, player, send: (message) => inboxes[id]!.push(message) });
   };
   const last = (id: string): ServerMessage => inboxes[id]!.at(-1)!;
   const seatOf = (id: string): string | null => {
@@ -39,14 +42,29 @@ describe("a match room", () => {
     expect(seatOf("c")).toBeNull();
   });
 
+  /// This passed while the code was broken, because it reconnected with the same
+  /// *connection* id — something a real socket never does. A live deployment put a
+  /// player back as a spectator at their own match. The reconnect here now looks like a
+  /// real one: a new socket carrying the same player token.
   it("gives a returning player their own side back, not a seat at the back", () => {
-    connect("a");
-    connect("b");
-    room.leave("a");
-    connect("a");
+    connect("sock-a", "player-a");
+    connect("sock-b", "player-b");
+    room.leave("sock-a");
+    connect("sock-a2", "player-a");
 
-    expect(room.seatOf("a")).toBe("one");
-    expect(room.seatOf("b")).toBe("two");
+    expect(room.seatOf("sock-a2")).toBe("one");
+    expect(room.seatOf("sock-b")).toBe("two");
+  });
+
+  it("does not hand a stranger the seat of someone who stepped away", () => {
+    connect("sock-a", "player-a");
+    connect("sock-b", "player-b");
+    room.leave("sock-a");
+    connect("sock-c", "player-c");
+
+    expect(room.seatOf("sock-c")).toBeNull();
+    connect("sock-a2", "player-a");
+    expect(room.seatOf("sock-a2")).toBe("one");
   });
 
   it("sends the board to everyone when the match starts, and to late arrivals", () => {

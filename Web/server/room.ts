@@ -30,12 +30,19 @@ export type ServerMessage =
   | { type: "error"; message: string };
 
 export interface Connection {
+  /** This socket. Changes on every reconnect. */
   id: string;
+  /** Who is behind it, which must *not* change on reconnect — a player who locks their
+   *  phone and comes back has to get their own side of the board back, not a seat at the
+   *  back. Keyed on a token the client keeps, because a connection id cannot survive the
+   *  connection. */
+  player: string;
   send: (message: ServerMessage) => void;
 }
 
 export class MatchRoom {
   private state: GameState | null = null;
+  /** Seat to player token, not seat to connection. */
   private readonly seats = new Map<PlayerID, string>();
   private readonly connections = new Map<string, Connection>();
 
@@ -51,7 +58,7 @@ export class MatchRoom {
     if (!this.seatOf(connection.id)) {
       for (const seat of ["one", "two"] as const) {
         if (!this.seats.has(seat)) {
-          this.seats.set(seat, connection.id);
+          this.seats.set(seat, connection.player);
           break;
         }
       }
@@ -67,7 +74,9 @@ export class MatchRoom {
   }
 
   seatOf(connectionID: string): PlayerID | null {
-    for (const [seat, holder] of this.seats) if (holder === connectionID) return seat;
+    const player = this.connections.get(connectionID)?.player;
+    if (!player) return null;
+    for (const [seat, holder] of this.seats) if (holder === player) return seat;
     return null;
   }
 

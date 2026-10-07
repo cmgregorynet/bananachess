@@ -43,6 +43,13 @@ export class MatchRoomObject {
       return new Response("Expected a WebSocket", { status: 426 });
     }
 
+    // Who is connecting, as opposed to which socket this is. A reconnect brings a new
+    // socket and the same token, which is what lets a player get their own seat back.
+    const player = new URL(request.url).searchParams.get("player");
+    if (!player || !/^[A-Za-z0-9_-]{8,64}$/.test(player)) {
+      return new Response("Missing player token", { status: 400 });
+    }
+
     const pair = new WebSocketPair();
     const client = pair[0];
     const server = pair[1];
@@ -50,9 +57,10 @@ export class MatchRoomObject {
 
     // Hibernation: Cloudflare may evict the object between moves, which is the common
     // case in a turn-based game where both players are thinking. The socket survives it.
-    this.ctx.acceptWebSocket(server, [id]);
+    this.ctx.acceptWebSocket(server, [id, player]);
     this.room.join({
       id,
+      player,
       send: (message: ServerMessage) => {
         try {
           server.send(JSON.stringify(message));

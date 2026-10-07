@@ -43,7 +43,9 @@ export class OnlineMatch {
     this.closed = false;
     this.handlers.onStatus({ kind: "connecting" });
     const protocol = location.protocol === "https:" ? "wss:" : "ws:";
-    const socket = new WebSocket(`${protocol}//${location.host}/api/room/${this.roomID}`);
+    const socket = new WebSocket(
+      `${protocol}//${location.host}/api/room/${this.roomID}?player=${playerToken(this.roomID)}`,
+    );
     this.socket = socket;
 
     socket.addEventListener("open", () => {
@@ -132,6 +134,26 @@ export class OnlineMatch {
       this.pendingCreate = message;
     }
   }
+}
+
+/** Who this browser is, for this match, across reconnections.
+ *
+ *  Kept because seats cannot be keyed on the connection: a WebSocket gets a fresh id
+ *  every time it opens, so a player whose phone locked for thirty seconds would come back
+ *  to find themselves a spectator at their own game. Stored per room, so joining a
+ *  different match is a clean slate.
+ *
+ *  One consequence worth knowing: two tabs in the same browser share the token and
+ *  therefore share a seat. Playing both sides needs two browsers, or a private window. */
+function playerToken(roomID: string): string {
+  const key = `bananachess.player.${roomID}`;
+  const existing = localStorage.getItem(key);
+  if (existing) return existing;
+  const bytes = new Uint8Array(12);
+  crypto.getRandomValues(bytes);
+  const token = [...bytes].map((b) => b.toString(16).padStart(2, "0")).join("");
+  localStorage.setItem(key, token);
+  return token;
 }
 
 /** Room ids are typed into URLs and read aloud, so no vowels and no look-alikes. */

@@ -101,6 +101,23 @@ npm run deploy   # build, then wrangler deploy
 Deploying needs `npx wrangler login` once. There is no database and no scheduled work, so
 the free tier covers it comfortably.
 
+`wrangler deploy --temporary` will publish to a throwaway account without logging in,
+which is useful for proving a change works against the real edge. It is not a home for
+the game: the one used during development started returning 403 for its static assets
+within the hour, while the Worker itself kept answering.
+
+### Seats survive a reconnect, and that needed a real deployment to get right
+
+A seat is held by a **player token** the browser keeps, not by the connection. A WebSocket
+gets a fresh id every time it opens, so anything keyed on the connection cannot survive a
+phone locking for thirty seconds — the player comes back and finds themselves a spectator
+at their own match. The unit test did not catch this, because it reconnected using the
+same connection id, which is something no real socket ever does. A live two-client test
+caught it immediately.
+
+Two tabs in one browser share the token and therefore share a seat. Playing both sides
+needs two browsers, or a private window.
+
 ### Why not GitHub Pages
 
 This repository is private, and Pages from a private repository needs a paid plan. That
@@ -116,5 +133,7 @@ Pages serves static files only and live play needs something that can hold a soc
   replay, blend bursts or splatter yet.
 - **Rematch.** Leaving a finished online match means creating a new one and sending a
   fresh link.
+- **The CPU here is the old one.** The iOS levels were sharpened in October; this port
+  still has the versions that moved at random and looked one move ahead.
 - **Spectators** can watch but the seats are never released, so a player who abandons a
   match holds their side until the room is gone.
