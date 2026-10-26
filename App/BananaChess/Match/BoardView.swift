@@ -7,10 +7,6 @@ struct BoardView: View {
     let viewModel: MatchViewModel
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    /// Read from the match, not from a constant: where the spawns are depends on which
-    /// board this match was dealt.
-    private var blenderHomes: Set<Position> { viewModel.displayState.allSpawnSquares }
-
     var body: some View {
         GeometryReader { proxy in
             let side = min(proxy.size.width, proxy.size.height)
@@ -112,32 +108,24 @@ struct BoardView: View {
         SquareView(
             position: position,
             isDark: position.isDarkSquare,
-            isBlenderHome: blenderHomes.contains(position),
-            deliveryEdge: deliveryEdge(at: position),
+            isBlenderHome: viewModel.blenderHomes.contains(position),
+            deliveryEdge: viewModel.deliveryEdge(at: position),
             isLegalDestination: viewModel.legalDestinations.contains(position),
-            isSelectedOrigin: selectedPosition == position
+            isSelectedOrigin: viewModel.selectedSquare == position
         )
         .frame(width: cell, height: cell)
         .contentShape(Rectangle())
         .onTapGesture { viewModel.tap(position) }
         .accessibilityElement(children: .ignore)
         .accessibilityIdentifier("square_\(position.row)_\(position.column)")
-        .accessibilityLabel(accessibilityLabel(for: position))
+        .accessibilityLabel(viewModel.squareDescription(at: position))
         .accessibilityAddTraits(.isButton)
-    }
-
-    /// Which player's fruit scores by reaching this square — drawn as a soft hatch band
-    /// so the two scoring edges are never in doubt.
-    private func deliveryEdge(at position: Position) -> PlayerSeat? {
-        if position.row == PlayerID.one.deliveryRow { return viewModel.seat(for: .one) }
-        if position.row == PlayerID.two.deliveryRow { return viewModel.seat(for: .two) }
-        return nil
     }
 
     // MARK: - Pieces
 
     private func pieces(cell: CGFloat) -> some View {
-        ForEach(viewModel.displayState.pieces.filter(\.isOnBoard)) { piece in
+        ForEach(viewModel.piecesOnBoard) { piece in
             pieceView(piece, cell: cell)
         }
     }
@@ -172,7 +160,7 @@ struct BoardView: View {
     /// back onto, since either one will do.
     private func knockedOutBlenders(cell: CGFloat) -> some View {
         ZStack(alignment: .topLeading) {
-            ForEach(viewModel.displayState.destroyedBlenders.filter(\.isAwaitingRespawn)) { blender in
+            ForEach(viewModel.blendersAwaitingRespawn) { blender in
                 if let home = blender.home {
                     marker(
                         seat: viewModel.seat(for: blender.owner),
@@ -255,11 +243,6 @@ struct BoardView: View {
 
     // MARK: - Geometry
 
-    private var selectedPosition: Position? {
-        guard let id = viewModel.selectedPieceID else { return nil }
-        return viewModel.displayState.piece(with: id)?.position
-    }
-
     /// A half-turn rotation when the local player sits at the bottom as player two, so
     /// each device always sees its own side nearest to it.
     private func boardPosition(displayRow: Int, displayColumn: Int) -> Position {
@@ -273,52 +256,6 @@ struct BoardView: View {
         let row = viewModel.isRotated ? Board.size - 1 - position.row : position.row
         let column = viewModel.isRotated ? Board.size - 1 - position.column : position.column
         return CGSize(width: CGFloat(column) * cell, height: CGFloat(row) * cell)
-    }
-
-    private func accessibilityLabel(for position: Position) -> String {
-        let square = "row \(position.row + 1), column \(position.column + 1)"
-        guard let piece = viewModel.displayState.piece(at: position) else {
-            var description = "Empty square, \(square)"
-            if blenderHomes.contains(position) { description += ", blender home" }
-            if let waiting = viewModel.displayState.destroyedBlenders
-                .first(where: { $0.isAwaitingRespawn && $0.home == position }) {
-                let owner = viewModel.mode.name(for: waiting.owner)
-                let turns = viewModel.displayState.turnsUntilRespawn(of: waiting) ?? 0
-                description += ", \(owner) blender blown up by a smoothie, "
-                    + "back in \(turns) \(turns == 1 ? "turn" : "turns")"
-            }
-            if viewModel.restorableBlender(at: position) != nil {
-                description += ", a destroyed blender can come back here, "
-                    + "tap to buy it back for \(RulesEngine.blenderRestoreCost) points"
-            }
-            return description + legalMoveSuffix(for: position)
-        }
-
-        let owner = viewModel.mode.name(for: piece.owner)
-        let golden = viewModel.displayState.isGolden(piece.id) ? "golden " : ""
-        let described = piece.isBlender
-            ? "\(owner) blender, \(square)"
-            : "\(owner) \(golden)\(piece.kind.rawValue), \(square), value \(piece.kind.baseValue)"
-        return described + legalMoveSuffix(for: position)
-    }
-
-    /// Blenders can now land on occupied squares, so an occupied square may well be a
-    /// legal destination — and what it costs depends on whose fruit is standing there.
-    /// Saying so out loud is the only way that reaches a VoiceOver player.
-    private func legalMoveSuffix(for position: Position) -> String {
-        guard viewModel.legalDestinations.contains(position) else { return "" }
-        guard let selectedID = viewModel.selectedPieceID,
-              let selected = viewModel.displayState.piece(with: selectedID),
-              let occupant = viewModel.displayState.piece(at: position)
-        else { return ", legal move" }
-
-        if occupant.isBlender {
-            return ", legal move, knocks both blenders out"
-        }
-        let value = occupant.kind.baseValue
-        return occupant.owner == selected.owner
-            ? ", legal move, blends your own \(occupant.kind.rawValue), minus \(value)"
-            : ", legal move, blends for plus \(value)"
     }
 }
 

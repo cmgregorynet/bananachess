@@ -2,60 +2,9 @@ import BananaChessEngine
 import SwiftUI
 
 struct HomeView: View {
-    @Environment(\.onlineMatchService) private var onlineService
-
-    @AppStorage("lastCPUDifficulty") private var storedDifficulty = CPUDifficulty.medium.rawValue
-    @AppStorage("lastCPUHumanPlaysFirst") private var humanPlaysFirst = true
-    @AppStorage("wildcardRulesEnabled") private var wildcardRules = false
-    @AppStorage("boardSetup") private var storedBoardSetup = BoardSetup.standard.rawValue
-    @AppStorage("boardWrap") private var storedBoardWrap = BoardWrap.flat.rawValue
-    @AppStorage("blenderBattles") private var blenderBattles = false
-
-    @State private var route: Route?
+    @State var viewModel: HomeViewModel
     @State private var isShowingRules = false
     @State private var isShowingCPUOptions = false
-    @State private var linkError: String?
-    @State private var isInviting = false
-    @Environment(CloudKitInbox.self) private var inbox
-
-    private enum Route: Hashable {
-        case local
-        case computer(CPUDifficulty, PlayerID)
-        case online
-        /// A match arriving from, or leaving on, a link. The whole match travels in the
-        /// URL, so there is nothing to look up and nothing to wait for.
-        case byLink(matchID: String, state: GameState, localPlayer: PlayerID)
-        /// A live iCloud match. The share URL is the invitation; moves arrive on their own.
-        case cloud(summary: OnlineMatchSummary)
-        /// Matches in progress over iCloud, and the button that starts another. Going via
-        /// the lobby is what makes a match survive closing the app: without a list, an
-        /// invitation you had already sent was unreachable the moment you left the board.
-        case cloudLobby
-    }
-
-    private var difficulty: CPUDifficulty {
-        CPUDifficulty(rawValue: storedDifficulty) ?? .medium
-    }
-
-    private var ruleSet: RuleSet { wildcardRules ? .wildcard : .standard }
-
-    private var boardSetup: BoardSetup {
-        BoardSetup(rawValue: storedBoardSetup) ?? .standard
-    }
-
-    private var boardWrap: BoardWrap {
-        BoardWrap(rawValue: storedBoardWrap) ?? .flat
-    }
-
-    /// One blend in three throws pulp at the screen. `-alwaysSplatter` pins it on for
-    /// development and screenshots; like Undo, it does not exist in a release build.
-    private var blendEffects: BlendEffectPolicy {
-        #if DEBUG
-        ProcessInfo.processInfo.arguments.contains("-alwaysSplatter") ? .always : .standard
-        #else
-        .standard
-        #endif
-    }
 
     var body: some View {
         NavigationStack {
@@ -71,10 +20,10 @@ struct HomeView: View {
                         title
                             .padding(.top, 12)
                         menu
-                        BoardOptionsPanel(setup: $storedBoardSetup, wrap: $storedBoardWrap)
-                        WildcardRulesToggle(isOn: $wildcardRules)
+                        BoardOptionsPanel(setup: $viewModel.boardSetup, wrap: $viewModel.boardWrap)
+                        WildcardRulesToggle(isOn: $viewModel.usesWildcardRules)
                         RulesCheckbox(
-                            isOn: $blenderBattles,
+                            isOn: $viewModel.blenderBattles,
                             title: "Blender battles",
                             detail: "Blenders fight for a square instead of just taking it. "
                                 + "Half your standing fruit, plus one for attacking, plus a die each.",
@@ -90,122 +39,33 @@ struct HomeView: View {
                 }
                 .scrollBounceBehavior(.basedOnSize)
             }
-            .navigationDestination(item: $route) { route in
-                switch route {
-                case .local:
-                    MatchView(
-                        viewModel: MatchViewModel(
-                            mode: .localVersus,
-                            state: GameSetup.newGame(
-                                ruleSet: ruleSet,
-                                boardSetup: boardSetup,
-                                boardWrap: boardWrap,
-                                blenderBattles: blenderBattles
-                            ),
-                            blendEffects: blendEffects
-                        )
-                    )
-                case .computer(let difficulty, let humanPlays):
-                    MatchView(
-                        viewModel: MatchViewModel(
-                            mode: .computer(difficulty: difficulty, humanPlays: humanPlays),
-                            state: GameSetup.newGame(
-                                startingPlayer: .one,
-                                ruleSet: ruleSet,
-                                boardSetup: boardSetup,
-                                boardWrap: boardWrap,
-                                blenderBattles: blenderBattles
-                            ),
-                            blendEffects: blendEffects
-                        )
-                    )
-                case .byLink(let matchID, let state, let localPlayer):
-                    MatchView(
-                        viewModel: MatchViewModel(
-                            mode: .byLink(matchID: matchID, localPlayer: localPlayer),
-                            state: state,
-                            blendEffects: blendEffects
-                        )
-                    )
-                case .cloud(let summary):
-                    MatchView(
-                        viewModel: MatchViewModel(
-                            mode: .online(
-                                matchID: summary.id,
-                                localPlayer: summary.localPlayer,
-                                opponentName: summary.opponentName
-                            ),
-                            state: summary.payload?.state ?? GameSetup.newGame(),
-                            onlineService: inbox.service,
-                            invitationURL: summary.shareURL,
-                            blendEffects: blendEffects
-                        )
-                    )
-                case .cloudLobby:
-                    OnlineLobbyView(
-                        viewModel: OnlineLobbyViewModel(
-                            service: inbox.service,
-                            options: MatchOptions(
-                                ruleSet: ruleSet, boardSetup: boardSetup,
-                                boardWrap: boardWrap, blenderBattles: blenderBattles
-                            )
-                        ),
-                        title: "iCloud"
-                    )
-                case .online:
-                    OnlineLobbyView(
-                        viewModel: OnlineLobbyViewModel(
-                            service: onlineService,
-                            options: MatchOptions(
-                                ruleSet: ruleSet,
-                                boardSetup: boardSetup,
-                                boardWrap: boardWrap,
-                                blenderBattles: blenderBattles
-                            )
-                        )
-                    )
-                }
+            .navigationDestination(item: $viewModel.route) { route in
+                destination(for: route)
             }
-            .onChange(of: inbox.acceptedMatchID) { _, accepted in
-                guard let accepted else { return }
-                inbox.acceptedMatchID = nil
-                Task {
-                    do { route = .cloud(summary: try await inbox.service.loadMatch(id: accepted)) }
-                    catch { linkError = error.localizedDescription }
-                }
+            .onChange(of: viewModel.acceptedInvitationID) { _, accepted in
+                guard accepted != nil else { return }
+                viewModel.openAcceptedInvitation()
             }
-            .onOpenURL { url in
-                do {
-                    let payload = try MatchLink.payload(from: url)
-                    // Whoever opens the link is whoever the match is waiting on.
-                    route = .byLink(
-                        matchID: payload.matchID,
-                        state: payload.state,
-                        localPlayer: payload.state.activePlayer
-                    )
-                } catch {
-                    linkError = error.localizedDescription
-                }
-            }
+            .onOpenURL { viewModel.open($0) }
             .alert(
                 "Can't open that match",
-                isPresented: Binding(get: { linkError != nil }, set: { if !$0 { linkError = nil } })
+                isPresented: Binding(
+                    get: { viewModel.linkError != nil },
+                    set: { if !$0 { viewModel.linkError = nil } }
+                )
             ) {
-                Button("OK", role: .cancel) { linkError = nil }
+                Button("OK", role: .cancel) { viewModel.linkError = nil }
             } message: {
-                Text(linkError ?? "")
+                Text(viewModel.linkError ?? "")
             }
             .sheet(isPresented: $isShowingRules) { RulesView() }
             .sheet(isPresented: $isShowingCPUOptions) {
                 CPUOptionsSheet(
-                    difficulty: Binding(
-                        get: { difficulty },
-                        set: { storedDifficulty = $0.rawValue }
-                    ),
-                    humanPlaysFirst: $humanPlaysFirst,
+                    difficulty: $viewModel.difficulty,
+                    humanPlaysFirst: $viewModel.humanPlaysFirst,
                     onStart: {
                         isShowingCPUOptions = false
-                        route = .computer(difficulty, humanPlaysFirst ? .one : .two)
+                        viewModel.playComputer()
                     }
                 )
                 .presentationDetents([.medium])
@@ -213,33 +73,17 @@ struct HomeView: View {
         }
     }
 
-    /// The invitation *is* the first link, so the match is dealt with the opponent to
-    /// move and the inviter sitting second. Tapping Invite by Link therefore lands on a
-    /// board with something to send immediately — dealing it the other way round left
-    /// nothing to share until you had taken a turn, which is not what the button says.
-    ///
-    /// It also splits the two advantages: whoever invites picks the board and the rules,
-    /// whoever accepts gets the first move, which is worth about 72% of decided matches.
-    /// Live over iCloud when it is available, and a correspondence link when it is not.
-    /// The fallback matters: a player with no iCloud account should still be able to
-    /// invite someone rather than be told no.
-    private func invite() {
-        guard CloudKitMatchService.isConfigured else {
-            // No iCloud in this build: a correspondence link still lets them invite
-            // somebody rather than be told no.
-            startLinkMatch()
-            return
+    @ViewBuilder
+    private func destination(for route: HomeViewModel.Route) -> some View {
+        if let match = viewModel.makeMatchViewModel(for: route) {
+            MatchView(viewModel: match)
+        } else if let lobby = viewModel.makeLobbyViewModel(for: route) {
+            if route == .cloudLobby {
+                OnlineLobbyView(viewModel: lobby, title: "iCloud")
+            } else {
+                OnlineLobbyView(viewModel: lobby)
+            }
         }
-        route = .cloudLobby
-    }
-
-    private func startLinkMatch() {
-        let state = GameSetup.newGame(
-            startingPlayer: .one,
-            ruleSet: ruleSet, boardSetup: boardSetup, boardWrap: boardWrap,
-            blenderBattles: blenderBattles
-        )
-        route = .byLink(matchID: UUID().uuidString, state: state, localPlayer: .two)
     }
 
     private var title: some View {
@@ -264,22 +108,22 @@ struct HomeView: View {
                 title: "Local Two Player",
                 detail: "Share one phone and take turns.",
                 isPrimary: true
-            ) { route = .local }
+            ) { viewModel.playLocal() }
 
             MenuButton(
                 title: "Play Computer",
-                detail: "\(difficulty.displayName) · \(difficulty.blurb)"
+                detail: "\(viewModel.difficulty.displayName) · \(viewModel.difficulty.blurb)"
             ) { isShowingCPUOptions = true }
 
             MenuButton(
                 title: "Play Online",
                 detail: "Game Center. Their move arrives on its own."
-            ) { route = .online }
+            ) { viewModel.playOnline() }
 
             MenuButton(
                 title: "Invite by Link",
                 detail: "Send a friend a link and play. Live over iCloud."
-            ) { invite() }
+            ) { viewModel.invite() }
         }
     }
 }
@@ -430,7 +274,12 @@ struct CPUOptionsSheet: View {
 }
 
 #Preview {
-    HomeView()
+    HomeView(
+        viewModel: HomeViewModel(
+            gameCenter: GameCenterMatchService(),
+            inbox: CloudKitInbox(service: CloudKitMatchService())
+        )
+    )
 }
 
 
@@ -438,14 +287,14 @@ struct CPUOptionsSheet: View {
 /// in the player's head — "what board am I playing on" — and because two full-width
 /// panels stacked would push the start screen off a small phone.
 struct BoardOptionsPanel: View {
-    @Binding var setup: String
-    @Binding var wrap: String
+    @Binding var setup: BoardSetup
+    @Binding var wrap: BoardWrap
 
     var body: some View {
         WashiPanel(cornerRadius: 14) {
             VStack(alignment: .leading, spacing: 10) {
-                BoardOptionRow<BoardSetup>(title: "Board", selection: $setup)
-                BoardOptionRow<BoardWrap>(title: "Edges", selection: $wrap)
+                BoardOptionRow(title: "Board", selection: $setup)
+                BoardOptionRow(title: "Edges", selection: $wrap)
             }
             .padding(14)
         }
@@ -459,11 +308,7 @@ struct BoardOptionsPanel: View {
 /// without a sentence under them, and that sentence has to change with the tap.
 struct BoardOptionRow<Option: BoardOption>: View where Option.AllCases: RandomAccessCollection {
     let title: String
-    @Binding var selection: String
-
-    private var current: Option {
-        Option(rawValue: selection) ?? Option.allCases.first!
-    }
+    @Binding var selection: Option
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
@@ -473,9 +318,9 @@ struct BoardOptionRow<Option: BoardOption>: View where Option.AllCases: RandomAc
 
             HStack(spacing: 6) {
                 ForEach(Option.allCases) { option in
-                    let isOn = option.rawValue == current.rawValue
+                    let isOn = option.rawValue == selection.rawValue
                     Button {
-                        withAnimation(.easeOut(duration: 0.18)) { selection = option.rawValue }
+                        withAnimation(.easeOut(duration: 0.18)) { selection = option }
                         Haptics.selection()
                     } label: {
                         Text(option.displayName)
@@ -504,7 +349,7 @@ struct BoardOptionRow<Option: BoardOption>: View where Option.AllCases: RandomAc
                 }
             }
 
-            Text(current.blurb)
+            Text(selection.blurb)
                 .font(.system(size: 11, design: .serif))
                 .foregroundStyle(Palette.inkSoft)
                 .multilineTextAlignment(.leading)

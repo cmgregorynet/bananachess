@@ -161,10 +161,17 @@ final class MatchViewModel {
 
     // MARK: - Lifecycle
 
-    func onAppear(reduceMotion: Bool) {
+    func start(reduceMotion: Bool) async {
         self.reduceMotion = reduceMotion
         startCPUTurnIfNeeded()
         observeOnlineUpdates()
+        await refreshFromServer()
+    }
+
+    /// Correctness comes from refreshing on activation, never from a notification that
+    /// may or may not arrive.
+    func sceneDidBecomeActive() async {
+        await refreshFromServer()
     }
 
     // MARK: - Interaction
@@ -233,15 +240,11 @@ final class MatchViewModel {
         for player: PlayerID
     ) -> PendingSelfBlend.BlenderamaStanding {
         guard displayState.ruleSet.usesWildcards else { return .notPlaying }
-        guard !displayState.wildcards.blenderamaCountered[player] else { return .alreadyOff }
-        let soFar = displayState.wildcards.ownFruitBlended[player]
-        // Every fruit must go through your own blender, so if any has left the board any
-        // other way the count can never reach the target.
-        guard soFar + displayState.fruit(ownedBy: player).count >= GameSetup.fruitCount else {
-            return .alreadyOff
-        }
-        if soFar + 1 >= GameSetup.fruitCount { return .completesIt }
-        return .counts(soFar: soFar, target: GameSetup.fruitCount)
+        let standing = displayState.wildcardStanding(for: player)
+        guard !standing.isBlenderamaBlocked else { return .alreadyOff }
+        let soFar = standing.ownFruitBlended
+        if soFar + 1 >= standing.blenderamaTarget { return .completesIt }
+        return .counts(soFar: soFar, target: standing.blenderamaTarget)
     }
 
     func confirmSelfBlend() {
@@ -538,10 +541,16 @@ final class MatchViewModel {
     func refreshFromServer() async {
         guard case .online(let matchID, _, _) = mode,
               let onlineService,
-              var authority else { return }
+              authority != nil else { return }
         do {
             let summary = try await onlineService.loadMatch(id: matchID)
-            guard let payload = summary.payload else { return }
+            // Read the authority only after the await. Activation and a push can both
+            // refresh at once, and a copy taken before the await would let the slower,
+            // older answer overwrite the newer one. An identical payload is skipped
+            // outright, or the opponent's last move would animate a second time.
+            guard let payload = summary.payload,
+                  var authority,
+                  payload != authority.payload else { return }
             // adopt() refuses anything older than what is already stored, so a cached
             // or replayed payload can never walk the match backwards.
             guard (try? authority.adopt(payload)) != nil else { return }
@@ -696,7 +705,8 @@ final class MatchViewModel {
         let fresh = GameSetup.newGame(
             ruleSet: authoritativeState.ruleSet,
             boardSetup: authoritativeState.boardSetup,
-            boardWrap: authoritativeState.boardWrap
+            boardWrap: authoritativeState.boardWrap,
+            blenderBattles: authoritativeState.blenderBattles
         )
         undoStack.removeAll()
         authoritativeState = fresh
@@ -708,6 +718,11 @@ final class MatchViewModel {
         persist()
         startCPUTurnIfNeeded()
     }
+
+    /// An online match belongs to both players, so only the opponent-less modes restart.
+    var canPlayAgain: Bool { !mode.isOnline }
+
+    var canForfeit: Bool { mode.isOnline }
 
     var canUndo: Bool { !undoStack.isEmpty && !isResolving && !mode.isOnline }
 
@@ -771,6 +786,107 @@ final class MatchViewModel {
 
     func isSelectable(_ piece: Piece) -> Bool {
         !isInputLocked && piece.owner == displayState.activePlayer
+    }
+
+    // MARK: - Scoreboard
+
+    /// Everything one side's scoreboard shows, decided here so the view only lays it out.
+    struct Scoreboard: Equatable {
+        let name: String
+        let score: Int
+        let remainingFruit: [Piece]
+        let pointsOnBoard: Int
+        let isActive: Bool
+        /// Fruit is the clock: the last one on either side ends the match.
+        let isOnLastFruit: Bool
+        let wildcards: WildcardStanding?
+        let accessibilityLabel: String
+    }
+
+    func scoreboard(for player: PlayerID) -> Scoreboard {
+        let name = mode.name(for: player)
+        let score = displayState.scores[player]
+        let fruit = displayState.fruit(ownedBy: player)
+        let isActive = displayState.activePlayer == player && !displayState.status.isOver
+        return Scoreboard(
+            name: name,
+            score: score,
+            remainingFruit: fruit,
+            pointsOnBoard: displayState.fruitValueRemaining(for: player),
+            isActive: isActive,
+            isOnLastFruit: fruit.count == 1,
+            wildcards: ruleSet.usesWildcards ? displayState.wildcardStanding(for: player) : nil,
+            accessibilityLabel: "\(name), score \(score), \(fruit.count) fruit left"
+                + (isActive ? ", to move" : "")
+        )
+    }
+
+    // MARK: - Board presentation
+
+    var piecesOnBoard: [Piece] { displayState.pieces.filter(\.isOnBoard) }
+
+    var blendersAwaitingRespawn: [Piece] { displayState.destroyedBlenders.filter(\.isAwaitingRespawn) }
+
+    /// Read from the match, not from a constant: where the spawns are depends on which
+    /// board this match was dealt.
+    var blenderHomes: Set<Position> { displayState.allSpawnSquares }
+
+    var selectedSquare: Position? {
+        guard let selectedPieceID else { return nil }
+        return displayState.piece(with: selectedPieceID)?.position
+    }
+
+    /// Which seat's fruit scores by reaching this square, if either.
+    func deliveryEdge(at position: Position) -> PlayerSeat? {
+        if position.row == PlayerID.one.deliveryRow { return seat(for: .one) }
+        if position.row == PlayerID.two.deliveryRow { return seat(for: .two) }
+        return nil
+    }
+
+    func squareDescription(at position: Position) -> String {
+        let square = "row \(position.row + 1), column \(position.column + 1)"
+        guard let piece = displayState.piece(at: position) else {
+            var description = "Empty square, \(square)"
+            if blenderHomes.contains(position) { description += ", blender home" }
+            if let waiting = displayState.destroyedBlenders
+                .first(where: { $0.isAwaitingRespawn && $0.home == position }) {
+                let owner = mode.name(for: waiting.owner)
+                let turns = displayState.turnsUntilRespawn(of: waiting) ?? 0
+                description += ", \(owner) blender blown up by a smoothie, "
+                    + "back in \(turns) \(turns == 1 ? "turn" : "turns")"
+            }
+            if restorableBlender(at: position) != nil {
+                description += ", a destroyed blender can come back here, "
+                    + "tap to buy it back for \(RulesEngine.blenderRestoreCost) points"
+            }
+            return description + legalMoveSuffix(for: position)
+        }
+
+        let owner = mode.name(for: piece.owner)
+        let golden = displayState.isGolden(piece.id) ? "golden " : ""
+        let described = piece.isBlender
+            ? "\(owner) blender, \(square)"
+            : "\(owner) \(golden)\(piece.kind.rawValue), \(square), value \(piece.kind.baseValue)"
+        return described + legalMoveSuffix(for: position)
+    }
+
+    /// Blenders can now land on occupied squares, so an occupied square may well be a
+    /// legal destination — and what it costs depends on whose fruit is standing there.
+    /// Saying so out loud is the only way that reaches a VoiceOver player.
+    private func legalMoveSuffix(for position: Position) -> String {
+        guard legalDestinations.contains(position) else { return "" }
+        guard let selectedPieceID,
+              let selected = displayState.piece(with: selectedPieceID),
+              let occupant = displayState.piece(at: position)
+        else { return ", legal move" }
+
+        if occupant.isBlender {
+            return ", legal move, knocks both blenders out"
+        }
+        let value = occupant.kind.baseValue
+        return occupant.owner == selected.owner
+            ? ", legal move, blends your own \(occupant.kind.rawValue), minus \(value)"
+            : ", legal move, blends for plus \(value)"
     }
 
     // MARK: - Persistence

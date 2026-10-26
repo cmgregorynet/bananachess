@@ -851,3 +851,47 @@ struct BlenderamaTests {
 
 
 }
+
+@Suite("Wildcard standing")
+struct WildcardStandingTests {
+    @Test("A Split is blocked only once the player has no banana left to run")
+    func splitBlockedWithoutBananas() {
+        var builder = BoardBuilder()
+        _ = builder.fruit(.strawberry, .one, at: position(4, 0))
+        _ = builder.fruit(.banana, .two, at: position(1, 0))
+        let state = builder.state(ruleSet: .wildcard)
+
+        #expect(state.wildcardStanding(for: .one).isBananaSplitBlocked)
+        #expect(!state.wildcardStanding(for: .two).isBananaSplitBlocked)
+    }
+
+    @Test("A Split already delivered is complete, never blocked")
+    func completedSplitIsNotBlocked() {
+        var builder = BoardBuilder()
+        _ = builder.fruit(.strawberry, .one, at: position(4, 0))
+        var state = builder.state(ruleSet: .wildcard)
+        state.wildcards.bananasDelivered[.one] = GameSetup.bananaDeliveriesToWin
+
+        let standing = state.wildcardStanding(for: .one)
+        #expect(standing.isBananaSplitComplete)
+        #expect(!standing.isBananaSplitBlocked)
+    }
+
+    @Test("Blenderama dies when it is countered or when fruit leaves any other way")
+    func blenderamaBlocked() {
+        var builder = BoardBuilder()
+        for column in 0..<GameSetup.fruitCount - 1 {
+            _ = builder.fruit(.banana, .one, at: position(4, column % 6))
+        }
+        var state = builder.state(ruleSet: .wildcard)
+
+        // One fruit short and none blended: something left by another route.
+        #expect(state.wildcardStanding(for: .one).isBlenderamaBlocked)
+
+        state.wildcards.ownFruitBlended[.one] = 1
+        #expect(!state.wildcardStanding(for: .one).isBlenderamaBlocked)
+
+        state.wildcards.blenderamaCountered[.one] = true
+        #expect(state.wildcardStanding(for: .one).isBlenderamaBlocked)
+    }
+}

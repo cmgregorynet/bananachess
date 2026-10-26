@@ -4,14 +4,18 @@ import SwiftUI
 @main
 struct BananaChessApp: App {
     @UIApplicationDelegateAdaptor(BananaChessAppDelegate.self) private var appDelegate
-    @State private var onlineService = GameCenterMatchService()
-    @State private var inbox = CloudKitInbox(service: CloudKitMatchService())
+    @State private var inbox: CloudKitInbox
+    @State private var home: HomeViewModel
+
+    init() {
+        let inbox = CloudKitInbox(service: CloudKitMatchService())
+        _inbox = State(initialValue: inbox)
+        _home = State(initialValue: HomeViewModel(gameCenter: GameCenterMatchService(), inbox: inbox))
+    }
 
     var body: some Scene {
         WindowGroup {
-            HomeView()
-                .environment(\.onlineMatchService, onlineService)
-                .environment(inbox)
+            HomeView(viewModel: home)
                 .task {
                     // The delegate and the view tree have to share one service, or an
                     // accepted invitation would land in an object nothing is watching.
@@ -22,16 +26,5 @@ struct BananaChessApp: App {
                 .preferredColorScheme(.light)
                 .tint(Palette.amber)
         }
-    }
-}
-
-private struct OnlineMatchServiceKey: @preconcurrency EnvironmentKey {
-    @MainActor static let defaultValue: any OnlineMatchService = GameCenterMatchService()
-}
-
-extension EnvironmentValues {
-    var onlineMatchService: any OnlineMatchService {
-        get { self[OnlineMatchServiceKey.self] }
-        set { self[OnlineMatchServiceKey.self] = newValue }
     }
 }

@@ -115,3 +115,43 @@ public enum WinReason: String, Codable, Hashable, Sendable, CaseIterable {
         }
     }
 }
+
+/// One player's position on each alternate win, read off the state. The scoreboard
+/// tracker and the self-blend warning both ask this, so they can never disagree about
+/// whether a run is still alive.
+public struct WildcardStanding: Hashable, Sendable {
+    public let smoothie: SmoothieProgress
+    public let hasFiredSmoothie: Bool
+    public let bananasDelivered: Int
+    public let ownFruitBlended: Int
+    public let isBlenderamaCountered: Bool
+    /// Bananas recycle, so a Split only dies when the player has no banana left at all
+    /// to run across — every one of theirs has been blended.
+    public let isBananaSplitBlocked: Bool
+    /// Countered by the opponent scoring, or dead because some of this player's fruit
+    /// left the board by a route other than their own blender.
+    public let isBlenderamaBlocked: Bool
+
+    public var bananaSplitTarget: Int { GameSetup.bananaDeliveriesToWin }
+    public var blenderamaTarget: Int { GameSetup.fruitCount }
+    public var isBananaSplitComplete: Bool { bananasDelivered >= bananaSplitTarget }
+}
+
+extension GameState {
+    public func wildcardStanding(for player: PlayerID) -> WildcardStanding {
+        let fruit = fruit(ownedBy: player)
+        let bananas = wildcards.bananasDelivered[player]
+        let blended = wildcards.ownFruitBlended[player]
+        return WildcardStanding(
+            smoothie: wildcards.smoothie[player],
+            hasFiredSmoothie: wildcards.smoothieFired[player],
+            bananasDelivered: bananas,
+            ownFruitBlended: blended,
+            isBlenderamaCountered: wildcards.blenderamaCountered[player],
+            isBananaSplitBlocked: bananas < GameSetup.bananaDeliveriesToWin
+                && !fruit.contains { $0.kind == .banana },
+            isBlenderamaBlocked: wildcards.blenderamaCountered[player]
+                || blended + fruit.count < GameSetup.fruitCount
+        )
+    }
+}

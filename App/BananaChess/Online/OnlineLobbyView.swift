@@ -97,7 +97,7 @@ struct OnlineLobbyView: View {
 
                 ForEach(matches) { summary in
                     Button { openMatch = summary } label: {
-                        MatchRow(summary: summary)
+                        MatchRow(row: viewModel.row(for: summary))
                     }
                     .buttonStyle(.plain)
                 }
@@ -107,44 +107,28 @@ struct OnlineLobbyView: View {
 }
 
 struct MatchRow: View {
-    let summary: OnlineMatchSummary
+    let row: OnlineLobbyViewModel.Row
 
     var body: some View {
-        WashiPanel(cornerRadius: 14, isAccented: summary.status == .yourTurn) {
+        WashiPanel(cornerRadius: 14, isAccented: row.isYourTurn) {
             HStack {
                 VStack(alignment: .leading, spacing: 3) {
-                    Text(summary.opponentName ?? "Finding an opponent…")
+                    Text(row.title)
                         .font(.system(.body, design: .serif).weight(.medium))
                         .foregroundStyle(Palette.ink)
-                    Text(detail)
+                    Text(row.detail)
                         .font(.caption)
                         .foregroundStyle(Palette.inkSoft)
                 }
                 Spacer()
-                if let payload = summary.payload {
-                    Text("\(payload.state.scores[summary.localPlayer]) – \(payload.state.scores[summary.localPlayer.opponent])")
+                if let score = row.score {
+                    Text(score)
                         .font(.system(.body, design: .serif).weight(.semibold))
                         .foregroundStyle(Palette.ink)
                 }
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 12)
-        }
-    }
-
-    private var detail: String {
-        switch summary.status {
-        case .yourTurn: "Your turn"
-        case .waitingForOpponent: "Waiting for your opponent"
-        case .matchmaking: "Looking for an opponent"
-        case .completed, .ended:
-            switch summary.outcome {
-            case .win(let winner, let reason):
-                (winner == summary.localPlayer ? "You won" : "You lost")
-                    + (reason == .score ? "" : " · \(reason == .bananaSplit ? "Banana Split" : "Blenderama")")
-            case .draw: "Drawn"
-            case nil: "Finished"
-            }
         }
     }
 }

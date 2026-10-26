@@ -73,11 +73,14 @@ final class OnlineLobbyViewModel {
 
     private func observeUpdates() {
         updatesTask?.cancel()
+        let updates = service.matchUpdates()
+        // Self is only taken for the length of one refresh. Held for the whole loop, the
+        // task would keep this view model alive after its screen closed, and deinit —
+        // the only thing that cancels the task — would never run.
         updatesTask = Task { [weak self] in
-            guard let self else { return }
-            for await _ in service.matchUpdates() {
-                guard !Task.isCancelled else { return }
-                await refresh()
+            for await _ in updates {
+                guard let self, !Task.isCancelled else { return }
+                await self.refresh()
             }
         }
     }
@@ -113,6 +116,45 @@ final class OnlineLobbyViewModel {
             }
         }
     }
+
+    // MARK: - Rows
+
+    struct Row: Equatable {
+        let title: String
+        let detail: String
+        let score: String?
+        let isYourTurn: Bool
+    }
+
+    func row(for summary: OnlineMatchSummary) -> Row {
+        let score = summary.payload.map { payload in
+            "\(payload.state.scores[summary.localPlayer]) – \(payload.state.scores[summary.localPlayer.opponent])"
+        }
+        return Row(
+            title: summary.opponentName ?? "Finding an opponent…",
+            detail: detail(for: summary),
+            score: score,
+            isYourTurn: summary.status == .yourTurn
+        )
+    }
+
+    private func detail(for summary: OnlineMatchSummary) -> String {
+        switch summary.status {
+        case .yourTurn: "Your turn"
+        case .waitingForOpponent: "Waiting for your opponent"
+        case .matchmaking: "Looking for an opponent"
+        case .completed, .ended:
+            switch summary.outcome {
+            case .win(let winner, let reason):
+                (winner == summary.localPlayer ? "You won" : "You lost")
+                    + (reason == .score ? "" : " · \(reason == .bananaSplit ? "Banana Split" : "Blenderama")")
+            case .draw: "Drawn"
+            case nil: "Finished"
+            }
+        }
+    }
+
+    // MARK: - Destinations
 
     func mode(for summary: OnlineMatchSummary) -> MatchMode {
         .online(

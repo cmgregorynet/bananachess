@@ -5,13 +5,8 @@ import SwiftUI
 /// an alternate win is something you can see coming and go and stop, so nothing here is
 /// hidden from either side.
 struct WildcardTrackerView: View {
-    let state: GameState
-    let player: PlayerID
+    let standing: WildcardStanding
     let seat: PlayerSeat
-
-    private var smoothie: SmoothieProgress { state.wildcards.smoothie[player] }
-    private var bananas: Int { state.wildcards.bananasDelivered[player] }
-    private var blenderama: Int { state.wildcards.ownFruitBlended[player] }
 
     /// Blenderama appears once a player has started one — a 0/6 counter on every match
     /// would be noise.
@@ -21,59 +16,42 @@ struct WildcardTrackerView: View {
     /// about forty turns of every match, so that would pin a dead row to the screen all
     /// game. The warning now lives where the decision is actually made: the self-blend
     /// confirmation says outright when Blenderama is already off.
-    private var showsBlenderama: Bool { blenderama > 0 }
-
-    /// Bananas recycle, so a Split only dies when the player has no banana left at all
-    /// to run across — every one of theirs has been blended. A player chasing a dead
-    /// objective is exactly what the wildcard brief's "visible and counterable"
-    /// principle is meant to prevent.
-    private var isSplitBlocked: Bool {
-        bananas < GameSetup.bananaDeliveriesToWin
-            && !state.fruit(ownedBy: player).contains { $0.kind == .banana }
-    }
-
-    /// A Blenderama dies if the opponent steals one of the self-blends — the hard
-    /// counter, which the engine records explicitly — or if any of your fruit leaves by
-    /// any other route.
-    private var isBlenderamaBlocked: Bool {
-        state.wildcards.blenderamaCountered[player]
-            || blenderama + state.fruit(ownedBy: player).count < GameSetup.fruitCount
-    }
+    private var showsBlenderama: Bool { standing.ownFruitBlended > 0 }
 
     var body: some View {
         HStack(spacing: 14) {
             track(
                 label: "Smoothie",
-                isComplete: state.wildcards.smoothieFired[player]
+                isComplete: standing.hasFiredSmoothie
             ) {
                 ForEach([PieceKind.banana, .strawberry, .pineapple], id: \.self) { kind in
                     PieceArtwork(kind: kind, seat: seat, showsTray: false)
                         .frame(width: 15, height: 15)
-                        .opacity(smoothie.has(kind) ? 1 : 0.22)
-                        .grayscale(smoothie.has(kind) ? 0 : 1)
+                        .opacity(standing.smoothie.has(kind) ? 1 : 0.22)
+                        .grayscale(standing.smoothie.has(kind) ? 0 : 1)
                 }
             }
 
             track(
                 label: "Split",
-                isComplete: bananas >= GameSetup.bananaDeliveriesToWin,
-                isBlocked: isSplitBlocked
+                isComplete: standing.isBananaSplitComplete,
+                isBlocked: standing.isBananaSplitBlocked
             ) {
-                ForEach(0..<GameSetup.bananaDeliveriesToWin, id: \.self) { index in
+                ForEach(0..<standing.bananaSplitTarget, id: \.self) { index in
                     PieceArtwork(kind: .banana, seat: seat, showsTray: false)
                         .frame(width: 15, height: 15)
-                        .opacity(index < bananas ? 1 : 0.22)
-                        .grayscale(index < bananas ? 0 : 1)
+                        .opacity(index < standing.bananasDelivered ? 1 : 0.22)
+                        .grayscale(index < standing.bananasDelivered ? 0 : 1)
                 }
             }
 
             if showsBlenderama {
                 track(
-                    label: state.wildcards.blenderamaCountered[player] ? "Countered" : "Blenderama",
+                    label: standing.isBlenderamaCountered ? "Countered" : "Blenderama",
                     isComplete: false,
-                    isBlocked: isBlenderamaBlocked
+                    isBlocked: standing.isBlenderamaBlocked
                 ) {
-                    Text("\(blenderama)/\(GameSetup.fruitCount)")
+                    Text("\(standing.ownFruitBlended)/\(standing.blenderamaTarget)")
                         .font(.system(size: 11, weight: .semibold, design: .serif))
                         .foregroundStyle(Palette.ink)
                         .monospacedDigit()
@@ -118,17 +96,17 @@ struct WildcardTrackerView: View {
 
     private var accessibilityDescription: String {
         var parts = [
-            "Smoothie \(smoothie.collectedCount) of 3"
-                + (state.wildcards.smoothieFired[player] ? ", already poured" : ""),
-            "Banana Split \(bananas) of \(GameSetup.bananaDeliveriesToWin)"
-                + (isSplitBlocked ? ", no longer possible" : ""),
+            "Smoothie \(standing.smoothie.collectedCount) of 3"
+                + (standing.hasFiredSmoothie ? ", already poured" : ""),
+            "Banana Split \(standing.bananasDelivered) of \(standing.bananaSplitTarget)"
+                + (standing.isBananaSplitBlocked ? ", no longer possible" : ""),
         ]
         if showsBlenderama {
             parts.append(
-                "Blenderama \(blenderama) of \(GameSetup.fruitCount)"
-                    + (state.wildcards.blenderamaCountered[player]
+                "Blenderama \(standing.ownFruitBlended) of \(standing.blenderamaTarget)"
+                    + (standing.isBlenderamaCountered
                         ? ", countered"
-                        : isBlenderamaBlocked ? ", no longer possible" : "")
+                        : standing.isBlenderamaBlocked ? ", no longer possible" : "")
             )
         }
         return parts.joined(separator: ", ")
@@ -144,7 +122,7 @@ struct WildcardTrackerView: View {
 
     return ZStack {
         PaperBackground()
-        WildcardTrackerView(state: state, player: .one, seat: .bottom)
+        WildcardTrackerView(standing: state.wildcardStanding(for: .one), seat: .bottom)
             .padding()
     }
 }

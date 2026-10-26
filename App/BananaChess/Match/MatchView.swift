@@ -17,11 +17,11 @@ struct MatchView: View {
             PaperBackground()
 
             VStack(spacing: 14) {
-                ScoreboardView(viewModel: viewModel, player: viewModel.topPlayer, seat: .top)
+                ScoreboardView(scoreboard: viewModel.scoreboard(for: viewModel.topPlayer), seat: .top)
                 turnIndicator
                 BoardView(viewModel: viewModel)
                     .padding(.horizontal, 10)
-                ScoreboardView(viewModel: viewModel, player: viewModel.bottomPlayer, seat: .bottom)
+                ScoreboardView(scoreboard: viewModel.scoreboard(for: viewModel.bottomPlayer), seat: .bottom)
                 linkHandoff
                 controls
             }
@@ -62,18 +62,15 @@ struct MatchView: View {
         }
         .sheet(isPresented: $isShowingRules) { RulesView() }
         .task {
-            viewModel.onAppear(reduceMotion: reduceMotion)
             if !hasSeenTeaching {
                 hasSeenTeaching = true
                 isShowingTeaching = true
             }
-            if viewModel.mode.isOnline { await viewModel.refreshFromServer() }
+            await viewModel.start(reduceMotion: reduceMotion)
         }
         .onChange(of: scenePhase) { _, phase in
-            // Correctness comes from refreshing on activation, never from a notification
-            // that may or may not arrive.
-            guard phase == .active, viewModel.mode.isOnline else { return }
-            Task { await viewModel.refreshFromServer() }
+            guard phase == .active else { return }
+            Task { await viewModel.sceneDidBecomeActive() }
         }
         .confirmationDialog(
             "Restart this match?",
@@ -215,7 +212,7 @@ struct MatchView: View {
             Button("Restart") { viewModel.isShowingRestartConfirmation = true }
                 .buttonStyle(PaperButtonStyle())
 
-            if viewModel.mode.isOnline {
+            if viewModel.canForfeit {
                 Button("Forfeit") { isShowingForfeitConfirmation = true }
                     .buttonStyle(PaperButtonStyle())
             }
@@ -238,48 +235,39 @@ struct MatchView: View {
 
 /// Score, remaining fruit, and whose turn it is, for one side of the board.
 struct ScoreboardView: View {
-    let viewModel: MatchViewModel
-    let player: PlayerID
+    let scoreboard: MatchViewModel.Scoreboard
     let seat: PlayerSeat
 
-    private var isActive: Bool {
-        viewModel.displayState.activePlayer == player && !viewModel.displayState.status.isOver
-    }
-
     var body: some View {
-        WashiPanel(cornerRadius: 14, fill: Palette.panelTint(for: seat).opacity(0.65), isAccented: isActive) {
+        WashiPanel(cornerRadius: 14, fill: Palette.panelTint(for: seat).opacity(0.65), isAccented: scoreboard.isActive) {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 12) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(viewModel.mode.name(for: player))
+                        Text(scoreboard.name)
                             .font(.system(.subheadline, design: .serif).weight(.semibold))
                             .foregroundStyle(Palette.ink)
                         remainingFruit
                     }
                     Spacer(minLength: 8)
-                    Text("\(viewModel.displayState.scores[player])")
+                    Text("\(scoreboard.score)")
                         .font(.system(size: 30, weight: .semibold, design: .serif))
                         .foregroundStyle(Palette.ink)
                         .contentTransition(.numericText())
                 }
-                if viewModel.ruleSet.usesWildcards {
-                    WildcardTrackerView(state: viewModel.displayState, player: player, seat: seat)
+                if let wildcards = scoreboard.wildcards {
+                    WildcardTrackerView(standing: wildcards, seat: seat)
                 }
             }
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(
-            "\(viewModel.mode.name(for: player)), score \(viewModel.displayState.scores[player]), "
-            + "\(viewModel.displayState.fruit(ownedBy: player).count) fruit left"
-            + (isActive ? ", to move" : "")
-        )
+        .accessibilityLabel(scoreboard.accessibilityLabel)
     }
 
     private var remainingFruit: some View {
         HStack(spacing: 3) {
-            let fruit = viewModel.displayState.fruit(ownedBy: player)
+            let fruit = scoreboard.remainingFruit
             if fruit.isEmpty {
                 Text("no fruit left")
                     .font(.caption2)
@@ -289,13 +277,12 @@ struct ScoreboardView: View {
                     PieceArtwork(kind: piece.kind, seat: seat, showsTray: false)
                         .frame(width: 18, height: 18)
                 }
-                if fruit.count == 1 {
-                    // Fruit is the clock: the last one on either side ends the match.
+                if scoreboard.isOnLastFruit {
                     Text("· last fruit — ends the match")
                         .font(.caption2.weight(.semibold))
                         .foregroundStyle(Palette.amber)
                 } else {
-                    Text("· \(viewModel.displayState.fruitValueRemaining(for: player)) pts on the board")
+                    Text("· \(scoreboard.pointsOnBoard) pts on the board")
                         .font(.caption2)
                         .foregroundStyle(Palette.inkSoft)
                 }
@@ -327,11 +314,12 @@ struct ResultOverlay: View {
 
                     HStack(spacing: 20) {
                         ForEach([viewModel.bottomPlayer, viewModel.topPlayer], id: \.self) { player in
+                            let scoreboard = viewModel.scoreboard(for: player)
                             VStack(spacing: 2) {
-                                Text(viewModel.mode.name(for: player))
+                                Text(scoreboard.name)
                                     .font(.caption)
                                     .foregroundStyle(Palette.inkSoft)
-                                Text("\(viewModel.displayState.scores[player])")
+                                Text("\(scoreboard.score)")
                                     .font(.system(.title3, design: .serif).weight(.semibold))
                                     .foregroundStyle(Palette.ink)
                             }
@@ -339,7 +327,7 @@ struct ResultOverlay: View {
                     }
 
                     HStack(spacing: 12) {
-                        if !viewModel.mode.isOnline {
+                        if viewModel.canPlayAgain {
                             Button("Play again") { viewModel.restart() }
                                 .buttonStyle(PaperButtonStyle(isPrimary: true))
                         }
