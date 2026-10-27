@@ -69,8 +69,11 @@ struct MatchView: View {
             await viewModel.start(reduceMotion: reduceMotion)
         }
         .onChange(of: scenePhase) { _, phase in
-            guard phase == .active else { return }
-            Task { await viewModel.sceneDidBecomeActive() }
+            if phase == .active {
+                Task { await viewModel.sceneDidBecomeActive() }
+            } else {
+                viewModel.sceneDidResignActive()
+            }
         }
         .confirmationDialog(
             "Restart this match?",

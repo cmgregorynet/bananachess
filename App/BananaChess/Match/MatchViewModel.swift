@@ -65,6 +65,14 @@ final class MatchViewModel {
     // Infrastructure
     @ObservationIgnored private var undoStack: [GameState] = []
     @ObservationIgnored private var animationTask: Task<Void, Never>?
+    /// Events the engine has decided but the board has not shown yet. A queue rather
+    /// than a loop over a local array, so a timeline paused part-way through can pick up
+    /// at the next event instead of starting the move again.
+    @ObservationIgnored private var pendingEvents: [GameEvent] = []
+    /// The last event the board showed, so a resumed timeline still knows whether the
+    /// label already on screen should stay.
+    @ObservationIgnored private var lastShownEvent: GameEvent?
+    @ObservationIgnored private var isSceneActive = true
     @ObservationIgnored private var cpuTask: Task<Void, Never>?
     @ObservationIgnored private var updatesTask: Task<Void, Never>?
     @ObservationIgnored private var submitTask: Task<Void, Never>?
@@ -171,7 +179,17 @@ final class MatchViewModel {
     /// Correctness comes from refreshing on activation, never from a notification that
     /// may or may not arrive.
     func sceneDidBecomeActive() async {
+        isSceneActive = true
+        if isResolving { playTimeline() }
         await refreshFromServer()
+    }
+
+    /// Holds the timeline while nobody can see it. Left running, a move would finish
+    /// off screen and the CPU could reply before the player got back, so they would
+    /// return to a board that had changed without them seeing how.
+    func sceneDidResignActive() {
+        isSceneActive = false
+        animationTask?.cancel()
     }
 
     // MARK: - Interaction
@@ -317,33 +335,55 @@ final class MatchViewModel {
         animate(transition.events)
     }
 
-    /// Walks the engine's events in order, mutating only the display state. The rules
-    /// and the scores were already decided; this just performs them.
+    /// Queues the engine's events for the board. The rules and the scores were already
+    /// decided; the timeline only performs them.
     private func animate(_ events: [GameEvent]) {
         isResolving = true
+        pendingEvents.append(contentsOf: events)
+        playTimeline()
+    }
+
+    /// Shows the queued events one beat at a time, mutating only the display state.
+    ///
+    /// Everything here runs on the main actor, so the task can only be interrupted at
+    /// the sleep: an event is either fully shown and off the queue, or still on it.
+    /// That is what lets a paused timeline resume without showing anything twice.
+    private func playTimeline() {
         animationTask?.cancel()
+        guard isSceneActive else { return }
         animationTask = Task { [weak self] in
             guard let self else { return }
-            var previous: GameEvent?
-            for event in events {
-                if Task.isCancelled { break }
+            while let event = self.pendingEvents.first {
+                if Task.isCancelled { return }
+                self.pendingEvents.removeFirst()
                 self.spawnEffects(for: event)
-                let keepsPreviousFlash = self.flashSurvives(event, after: previous)
+                let keepsPreviousFlash = self.flashSurvives(event, after: self.lastShownEvent)
                 withAnimation(self.animation(for: event)) {
                     self.displayState = self.displayState.applying(event)
                     if !keepsPreviousFlash { self.flash = self.boardFlash(for: event) }
                 }
                 Haptics.play(for: event)
+                self.lastShownEvent = event
                 try? await Task.sleep(for: self.beat(for: event))
-                previous = event
             }
             guard !Task.isCancelled else { return }
-            self.displayState = self.authoritativeState
-            self.isResolving = false
-            withAnimation(.easeOut(duration: 0.4)) { self.flash = nil }
-            self.persist()
-            self.startCPUTurnIfNeeded()
+            self.finishTimeline()
         }
+    }
+
+    private func finishTimeline() {
+        displayState = authoritativeState
+        isResolving = false
+        lastShownEvent = nil
+        withAnimation(.easeOut(duration: 0.4)) { flash = nil }
+        persist()
+        startCPUTurnIfNeeded()
+    }
+
+    private func stopTimeline() {
+        animationTask?.cancel()
+        pendingEvents.removeAll()
+        lastShownEvent = nil
     }
 
     /// Whether an event should leave the label already on screen alone.
@@ -697,7 +737,7 @@ final class MatchViewModel {
     // MARK: - Match controls
 
     func restart() {
-        animationTask?.cancel()
+        stopTimeline()
         cpuTask?.cancel()
         // A restart is the same match again, so it keeps the rule set and the board mode
         // it started under. On a random board that means a *new* scatter rather than the
@@ -729,7 +769,7 @@ final class MatchViewModel {
     /// Development affordance only — never shown in a release build.
     func undo() {
         guard canUndo, let previous = undoStack.popLast() else { return }
-        animationTask?.cancel()
+        stopTimeline()
         cpuTask?.cancel()
         isOpponentThinking = false
         isResolving = false
