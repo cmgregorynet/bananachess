@@ -537,6 +537,63 @@ what Easy does. A DEBUG-only turn counter sits next to the Undo button for this.
 
 Unrestricted backward fruit movement did not stall any of the forty-eight matches.
 
+## A fourth level, and why it is not simply deeper (Brutal)
+
+Blenderama was still winnable against the CPU, and the cause was ten rule versions old.
+`counterReadiness` priced the counter as *closing a blender on the attacker's fruit*,
+which was the right answer before the shutout came in at rules 11. Since then Blenderama
+dies the moment the defender scores at all, by any route — so the CPU was marching
+blenders across the board while the one-move answer, running a fruit home, was worth
+nothing to it. In the test fixture the delivery route evaluated at −354 against −282 for
+the blender march: the evaluation actively preferred the wrong move. It now prices the
+counter on the nearer of the two routes to the scoreboard.
+
+The readiness credit is deliberately capped below the threat it answers
+(`(Board.size - 1) / Board.size` of it, with the distance floored at one). Price it any
+higher and the CPU hovers one move from scoring forever instead of scoring, because the
+hovering bonus would exceed what it gains by removing the threat.
+
+A first attempt gave defence its own, much larger weight. That cannot work:
+`Evaluation.score` is antisymmetric — `wildcards(me) - wildcards(them)` — which is what
+makes minimax sound here, so a defence-only weight comes back as an offence weight
+through the opponent's term. It would have re-inflated chasing your own Blenderama to
+24,000 and brought back the beeline that lowering `alternateWinThreat` to 4,000 fixed.
+Offence and defence share one scale; only the target changed.
+
+**The new level is not Hard with a longer clock, because that was measured and it was
+worse.** Brutal first shipped as depth 16 with a four-second cap and lost to Hard 2–4.
+Timing a real midgame position explains it: depth 4 costs 0.6s, depth 5 1.3s, depth 6
+**9.8s**, depth 7 17.6s. A ply costs roughly seven times the one before it, so two
+seconds and four seconds both complete exactly depth five — the extra two seconds went
+entirely on a depth-six iteration that was always abandoned. `depth: 12` and `depth: 16`
+were both fiction; the clock stops at five either way, and `maximumDepth` is back to 12
+because raising it buys nothing.
+
+Width is priced out by node cost, not by tree shape: the branching factor is only 13,
+but `RulesEngine.apply` costs 49µs and `Evaluation.score` 51µs per node. Getting a
+genuine extra ply would mean a compact state with make/unmake instead of copied value
+types — an engine rewrite, not a difficulty setting. Storing the best move in the
+transposition table and re-ranking the root from the previous iteration bought about 5%
+at depth 6 and 25% at depth 7; both are kept, both are pure ordering changes that cannot
+alter a completed search's value, and neither was nearly enough.
+
+What does buy sight is **selective** depth. Brutal follows forcing moves — a fruit
+reaching its delivery row, or a blender arriving on an occupied square — eight plies past
+the nominal depth, so a line is never judged half way through an exchange. That took it
+from 2–4 down to **9–3 up** over twelve games with alternating colours, no draws and none
+unfinished. Mean 2.98s a move, worst 4.05s.
+
+Two cautions on the measurement. Games must be given more than 300 turns: at that cap six
+of the twelve were silently dropped and the result read 6–0, which flatters whoever was
+ahead — five genuinely ended between turns 326 and 409. And a time-limited plan cannot be
+duelled on a loaded machine, nor can two levels be compared by overriding `plan:` on both,
+which makes them byte-identical players whose results then differ only by where the clock
+happened to cut the deepening.
+
+Quiescence is gated to Brutal alone via `SearchPlan.quiescenceDepth`, and with it off the
+search returns the leaf value before the node is even counted, so Easy, Medium and Hard
+are unchanged down to which nodes the clock is polled on.
+
 ## Deferred
 
 - **No sprites yet.** The vector artwork ships as the real look, behind the art

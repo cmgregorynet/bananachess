@@ -4,6 +4,7 @@ public enum CPUDifficulty: String, Codable, Sendable, CaseIterable, Identifiable
     case easy
     case medium
     case hard
+    case brutal
 
     public var id: String { rawValue }
 
@@ -12,6 +13,7 @@ public enum CPUDifficulty: String, Codable, Sendable, CaseIterable, Identifiable
         case .easy: "Easy"
         case .medium: "Medium"
         case .hard: "Hard"
+        case .brutal: "Brutal"
         }
     }
 
@@ -20,6 +22,7 @@ public enum CPUDifficulty: String, Codable, Sendable, CaseIterable, Identifiable
         case .easy: "Moves without a plan. A good first game."
         case .medium: "Takes the point in front of it."
         case .hard: "Looks several moves ahead, and will trade."
+        case .brutal: "Answers your plan before you finish it. Takes its time."
         }
     }
 
@@ -45,19 +48,29 @@ public struct SearchPlan: Sendable, Hashable {
     /// How close two lines must be before the tie is broken on banking points now.
     /// Zero leaves the search's own judgement alone.
     public var tempoMargin: Int
+    /// How many extra plies of *forcing* moves to follow past the nominal depth, so a
+    /// line is never judged in the middle of a blend. Zero turns it off.
+    ///
+    /// This is the only lever that buys sight on this board. Width is priced out — a
+    /// ply costs roughly seven times the last, and the clock stops every level at five —
+    /// so the extra plies have to be spent on the handful of moves that actually settle
+    /// anything rather than on all thirteen.
+    public var quiescenceDepth: Int
 
     public init(
         depth: Int,
         candidateFraction: Double,
         softTimeBudget: Duration,
         hardTimeCap: Duration,
-        tempoMargin: Int = 0
+        tempoMargin: Int = 0,
+        quiescenceDepth: Int = 0
     ) {
         self.depth = depth
         self.candidateFraction = candidateFraction
         self.softTimeBudget = softTimeBudget
         self.hardTimeCap = hardTimeCap
         self.tempoMargin = tempoMargin
+        self.quiescenceDepth = quiescenceDepth
     }
 
     /// The shipped levels.
@@ -95,6 +108,18 @@ public struct SearchPlan: Sendable, Hashable {
                 depth: 12, candidateFraction: 0,
                 softTimeBudget: .milliseconds(1_500), hardTimeCap: .seconds(2)
             )
+        case .brutal:
+            // Measured, after a first attempt that simply doubled the clock and came out
+            // *weaker*: a ply costs about seven times the one before it, so two seconds
+            // and four seconds both complete exactly depth five and the extra two
+            // seconds went entirely on a depth-six iteration that was always abandoned.
+            // What the clock can buy is selective depth — eight further plies down
+            // forcing lines only — so this level is told to spend it there instead.
+            SearchPlan(
+                depth: 12, candidateFraction: 0,
+                softTimeBudget: .seconds(2), hardTimeCap: .seconds(4),
+                quiescenceDepth: 8
+            )
         }
     }
 
@@ -117,6 +142,9 @@ public struct SearchPlan: Sendable, Hashable {
                 depth: 8, candidateFraction: 0,
                 softTimeBudget: .milliseconds(1_500), hardTimeCap: .seconds(2)
             )
+        // Brutal is new, so the level it has to improve on is the one below it.
+        case .brutal:
+            SearchPlan.standard(for: .hard)
         }
     }
 }
@@ -213,10 +241,11 @@ public struct CPUPlayer: Sendable {
             root: player,
             weights: weights,
             clock: clock,
-            deadline: hardDeadline
+            deadline: hardDeadline,
+            quiescenceDepth: plan.quiescenceDepth
         )
 
-        let ordered = orderMoves(moves, in: state)
+        var ordered = orderMoves(moves, in: state)
         var best = ordered[0]
         var depth = 2
         var values: [GameAction: Int] = [:]
@@ -230,6 +259,11 @@ public struct CPUPlayer: Sendable {
             }
             best = result.move
             values = result.values
+            // Hand the next iteration this one's ranking. Deepening earns its keep
+            // mostly through the ordering it passes forward, not through the values it
+            // throws away: searching the previous best first is what lets the next depth
+            // establish a tight window on its first move instead of its last.
+            ordered.sort { (values[$0] ?? Int.min, $0) > (values[$1] ?? Int.min, $1) }
             depth += 1
             // A forced win is found, not improved on.
             if abs(result.value) >= Evaluation.winScore { break }
@@ -299,8 +333,9 @@ public struct CPUPlayer: Sendable {
 
 private struct Search {
     /// Raised from eight once the search stopped paying for enforced legality at every
-    /// node. The clock still decides where it actually stops; this only stops the ceiling
-    /// from being what does.
+    /// node. The clock still decides where it actually stops, and on a real midgame
+    /// position it stops at five: depth six costs about eight seconds. This ceiling is
+    /// therefore not what binds, and raising it further buys nothing.
     static let maximumDepth = 12
     /// Checking a clock is not free; do it every this-many nodes.
     static let timeCheckInterval = 512
@@ -309,6 +344,7 @@ private struct Search {
     let weights: EvaluationWeights
     let clock: ContinuousClock
     let deadline: ContinuousClock.Instant
+    let quiescenceDepth: Int
 
     private var transpositions: [UInt64: Entry] = [:]
     private var nodes = 0
@@ -318,6 +354,11 @@ private struct Search {
         let depth: Int
         let value: Int
         let bound: Bound
+        /// The move that produced `value`. Kept even when the entry is too shallow to
+        /// answer the current query: a move that was best at depth three is still the
+        /// first thing worth trying at depth six, and trying it first is what makes the
+        /// window narrow early enough for the cut-offs to do their work.
+        let move: GameAction?
     }
 
     enum Bound {
@@ -333,11 +374,18 @@ private struct Search {
         let values: [GameAction: Int]
     }
 
-    init(root: PlayerID, weights: EvaluationWeights, clock: ContinuousClock, deadline: ContinuousClock.Instant) {
+    init(
+        root: PlayerID,
+        weights: EvaluationWeights,
+        clock: ContinuousClock,
+        deadline: ContinuousClock.Instant,
+        quiescenceDepth: Int
+    ) {
         self.root = root
         self.weights = weights
         self.clock = clock
         self.deadline = deadline
+        self.quiescenceDepth = quiescenceDepth
     }
 
     mutating func bestMove(from state: GameState, moves: [GameAction], depth: Int) -> Result? {
@@ -372,15 +420,19 @@ private struct Search {
         if timedOut { return 0 }
 
         if depth <= 0 || state.status.isOver {
-            return Evaluation.score(state, for: root, weights: weights)
+            return quiesced(state, alpha: alpha, beta: beta, remaining: quiescenceDepth)
         }
 
         let key = state.positionKey
-        if let entry = transpositions[key], entry.depth >= depth {
-            switch entry.bound {
-            case .exact: return entry.value
-            case .lower: if entry.value >= beta { return entry.value }
-            case .upper: if entry.value <= alpha { return entry.value }
+        var hint: GameAction?
+        if let entry = transpositions[key] {
+            hint = entry.move
+            if entry.depth >= depth {
+                switch entry.bound {
+                case .exact: return entry.value
+                case .lower: if entry.value >= beta { return entry.value }
+                case .upper: if entry.value <= alpha { return entry.value }
+                }
             }
         }
 
@@ -408,8 +460,9 @@ private struct Search {
         var alpha = alpha
         var beta = beta
         var best = maximizing ? Int.min : Int.max
+        var bestMove: GameAction?
 
-        for move in ordered(moves, in: state) {
+        for move in ordered(moves, in: state, first: hint) {
             guard let transition = try? RulesEngine.apply(
                 move, to: state, battles: .expected, enforcingRepetition: false
             ) else { continue }
@@ -417,10 +470,10 @@ private struct Search {
             if timedOut { return best == Int.min || best == Int.max ? 0 : best }
 
             if maximizing {
-                best = max(best, value)
+                if bestMove == nil || value > best { best = value; bestMove = move }
                 alpha = max(alpha, best)
             } else {
-                best = min(best, value)
+                if bestMove == nil || value < best { best = value; bestMove = move }
                 beta = min(beta, best)
             }
             if alpha >= beta { break }
@@ -431,15 +484,91 @@ private struct Search {
         guard !timedOut else { return best }
         let bound: Bound =
             if best <= originalAlpha { .upper } else if best >= originalBeta { .lower } else { .exact }
-        transpositions[key] = Entry(depth: depth, value: best, bound: bound)
+        transpositions[key] = Entry(depth: depth, value: best, bound: bound, move: bestMove)
         return best
     }
 
-    private func ordered(_ moves: [GameAction], in state: GameState) -> [GameAction] {
+    private func ordered(
+        _ moves: [GameAction], in state: GameState, first hint: GameAction?
+    ) -> [GameAction] {
         moves
-            .map { (move: $0, rank: Self.staticRank(of: $0, in: state)) }
+            .map { (move: $0, rank: $0 == hint ? Int.max : Self.staticRank(of: $0, in: state)) }
             .sorted { ($0.rank, $0.move) > ($1.rank, $1.move) }
             .map(\.move)
+    }
+
+    /// Keeps following *forcing* moves past the nominal depth so a line is never judged
+    /// half way through an exchange. Without it the search happily stops one ply after
+    /// pushing a fruit next to a blender, banks the advance, and never sees it eaten:
+    /// the horizon effect, and on this board it is the difference between a level that
+    /// looks five moves ahead and one that plays the exchanges out.
+    ///
+    /// `standPat` is the value of declining to continue. A player here must actually
+    /// move, so declining is not strictly available — the usual approximation, and sound
+    /// in the direction that matters: it stops the side to move being credited with a
+    /// forced loss it could have avoided by standing still.
+    private mutating func quiesced(
+        _ state: GameState, alpha: Int, beta: Int, remaining: Int
+    ) -> Int {
+        // Returned before the node is even counted, so a level with quiescence off
+        // behaves exactly as it did before this existed — same leaf value, same node
+        // count, so the clock is still polled on the same nodes.
+        guard remaining > 0, !state.status.isOver else {
+            return Evaluation.score(state, for: root, weights: weights)
+        }
+
+        nodes += 1
+        if nodes % Self.timeCheckInterval == 0, clock.now >= deadline {
+            timedOut = true
+        }
+        if timedOut { return 0 }
+
+        let standPat = Evaluation.score(state, for: root, weights: weights)
+
+        let maximizing = state.activePlayer == root
+        var alpha = alpha
+        var beta = beta
+        if maximizing {
+            if standPat >= beta { return standPat }
+            alpha = max(alpha, standPat)
+        } else {
+            if standPat <= alpha { return standPat }
+            beta = min(beta, standPat)
+        }
+
+        let forcing = RulesEngine.legalActions(in: state, enforcingRepetition: false)
+            .filter { Self.isForcing($0, in: state) }
+        guard !forcing.isEmpty else { return standPat }
+
+        var best = standPat
+        for move in ordered(forcing, in: state, first: nil) {
+            guard let transition = try? RulesEngine.apply(
+                move, to: state, battles: .expected, enforcingRepetition: false
+            ) else { continue }
+            let value = quiesced(
+                transition.state, alpha: alpha, beta: beta, remaining: remaining - 1
+            )
+            if timedOut { return best }
+            if maximizing {
+                best = max(best, value)
+                alpha = max(alpha, best)
+            } else {
+                best = min(best, value)
+                beta = min(beta, best)
+            }
+            if alpha >= beta { break }
+        }
+        return best
+    }
+
+    /// A move that settles something: a fruit reaching its delivery row, or a blender
+    /// arriving on an occupied square — a blend, a self-blend, or a blender battle.
+    /// Decided without applying the move, which is the expensive half of a node.
+    static func isForcing(_ action: GameAction, in state: GameState) -> Bool {
+        guard case .move(let move) = action,
+              let piece = state.piece(with: move.pieceID) else { return false }
+        if piece.isFruit { return move.destination.row == piece.owner.deliveryRow }
+        return state.piece(at: move.destination) != nil
     }
 
     /// Cheap ordering heuristic — no move is applied. Immediate points first, then

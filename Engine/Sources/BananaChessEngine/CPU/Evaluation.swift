@@ -145,10 +145,15 @@ enum Evaluation {
     ///
     /// A threat on its own is worth the same after every move that does not remove it,
     /// so it cancels out of the comparison and tells the CPU nothing about what to do.
-    /// This is the half that moves it: closing on the fruit whose blending would kill
-    /// the threat is worth a slice of the threat itself, and the slice grows as the
-    /// threat closes. Without it the CPU only ever counters when the counter also
-    /// happens to be the greediest move on the board.
+    /// This is the half that moves it: getting closer to the move that would kill the
+    /// threat is worth a slice of the threat itself, and the slice grows as the threat
+    /// closes. Without it the CPU only ever counters when the counter also happens to be
+    /// the greediest move on the board.
+    ///
+    /// The slice is deliberately kept under the whole: `readiness` can reach at most
+    /// `(Board.size - 1) / Board.size` of the threat, so removing a threat always beats
+    /// standing one move away from removing it. Price readiness any higher and the CPU
+    /// hovers next to the answer forever instead of playing it.
     private static func counterReadiness(
         _ state: GameState,
         for player: PlayerID,
@@ -157,17 +162,23 @@ enum Evaluation {
         let attacker = player.opponent
         var total = 0
 
-        // Blenderama dies if this player blends any one of the attacker's fruit.
+        // Blenderama is a *shutout*: it dies the moment this player scores at all, by
+        // whatever route. This used to credit only closing a blender on the attacker's
+        // fruit, which was the right answer under the rules as they stood before the
+        // shutout came in and has been wrong since — it had the CPU marching blenders
+        // across the board while the one-move answer, running a fruit home, scored
+        // nothing in the evaluation. Credit whichever route to the scoreboard is nearer.
         if let steps = movesToBlenderama(state, for: attacker) {
-            total += readiness(
-                against: threatValue(stepsAway: steps, weights: weights),
-                targets: state.fruit(ownedBy: attacker).compactMap(\.position),
-                for: player,
-                in: state
-            )
+            let threat = threatValue(stepsAway: steps, weights: weights)
+            // Floored at one so the slice stays strictly under the whole even if a
+            // fruit is somehow already standing on the delivery row.
+            let distance = max(1, movesToScore(state, for: player) ?? Board.size)
+            let closeness = Board.size - min(distance, Board.size)
+            total += threat * closeness / Board.size
         }
 
-        // A Banana Split dies if this player blends the attacker's last banana.
+        // A Banana Split has no such shutout and still has to be answered on the board:
+        // blend the attacker's last banana before it gets across.
         if let steps = movesToBananaSplit(state, for: attacker) {
             total += readiness(
                 against: threatValue(stepsAway: steps, weights: weights),
@@ -235,6 +246,32 @@ enum Evaluation {
             }
             .min() ?? Board.size - 1
         return (remaining - 1) * (Board.size - 1) + nearest
+    }
+
+    /// The fewest moves in which this player could put *any* points on the board: a
+    /// blender reaching one of the opponent's fruit, or one of their own fruit reaching
+    /// the delivery row, whichever is nearer. Nil when they have neither route left.
+    ///
+    /// This is what answers a Blenderama under the shutout rule, and it is its own thing
+    /// rather than a call to `shortestBlenderApproach`, because the cheap answer is
+    /// usually a delivery and not a blend at all.
+    private static func movesToScore(_ state: GameState, for player: PlayerID) -> Int? {
+        var best: Int?
+        if let approach = shortestBlenderApproach(
+            of: player,
+            to: state.fruit(ownedBy: player.opponent).compactMap(\.position),
+            in: state
+        ) {
+            best = approach
+        }
+        for fruit in state.fruit(ownedBy: player) {
+            guard let square = fruit.position else { continue }
+            let steps = Board.separation(
+                square.row, player.deliveryRow, joined: state.boardWrap.wrapsRows
+            )
+            best = min(best ?? Int.max, steps)
+        }
+        return best
     }
 
     /// Diagonal distance from this player's nearest on-board blender to the nearest of
