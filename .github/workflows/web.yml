@@ -1,0 +1,53 @@
+name: Web
+
+# Everything here runs on GitHub's machines. Nothing about the site depends on a laptop
+# being awake: the tests run here, the build happens here, and the Worker is uploaded
+# from here to Cloudflare's edge, which is where it actually runs.
+on:
+  push:
+    branches: [main]
+    paths: ["Web/**", ".github/workflows/web.yml"]
+  pull_request:
+    paths: ["Web/**"]
+  workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: Web
+
+jobs:
+  check:
+    name: Tests and typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: Web/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      # The conformance fixtures are committed, so the rules are held to the Swift
+      # engine here without needing a macOS runner or a Swift toolchain.
+      - run: npm test
+
+  deploy:
+    name: Deploy to Cloudflare
+    needs: check
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: Web/package-lock.json
+      - run: npm ci
+      - run: npm run build
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: Web
