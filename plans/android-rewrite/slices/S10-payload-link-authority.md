@@ -5,12 +5,12 @@ layer: domain
 points: 3
 depends_on: [S06, S03]
 touches: [Android/engine/src/main/kotlin/com/charlesbarton/bananachess/engine/online/, Android/engine/src/test/kotlin/com/charlesbarton/bananachess/engine/online/]
-status: in_progress
+status: done
 branch: slice/android-rewrite/S10
 started: 2026-11-23T13:16
-completed:
-actual_points:
-review_fixes:
+completed: 2026-11-23T13:28
+actual_points: 3
+review_fixes: damaged-link and inflate-limit tests made real; no production defects
 blocked_reason:
 ---
 
@@ -77,7 +77,13 @@ cd Android && ./gradlew :engine:test ktlintCheck
 3: the real unknowns of the plan live here (Apple's compression framing, exact JSON bytes, unsigned 64-bit numbers); S03's golden data turns each into a failing test with a visible diff.
 
 ## Actuals
-- **Actual points:**
-- **What took longer / shorter than expected:**
+- **Actual points:** 3. The estimate was 3.
+- **What took longer / shorter than expected:** The codec matched all golden bytes on the first run and raw DEFLATE worked as S03 observed. The test suite (hostile input, long JSON constants) and a Swift probe for shapes the golden file lacks took the time.
 - **Surprises / unknowns that surfaced:**
-- **Review fixes applied:**
+  - Checked in both directions: all 146 golden payloads re-encode byte for byte in Kotlin, and Kotlin-made links for all of them (plus two more) were decoded by the Swift engine and re-encoded identically. The Swift-side check was a one-off and is not committed.
+  - Every wire shape the plan called "not pinned" is now pinned against real Swift output (draw, both wildcard win reasons, `turnPassed`, `blenderRespawned`, `smoothie`, a non-nil `respawnTurn`, extreme `boardHistory` values, string escaping). The strings are constants in `SwiftSamples.kt`; the probe that produced them lived only in the scratchpad.
+  - Deliberate differences from Swift: versions are checked before the rest of the payload is decoded, so a future schema with a changed shape reports "newer version" where Swift reports "malformed"; Kotlin refuses non-integer numbers; Kotlin re-sorts pieces that arrive unsorted.
+  - Hostile-input limits: links over 65,536 characters, inflation past 1 MiB, off-board squares, duplicate piece ids and two pieces on one square are all refused. Not validated: whether a position is honestly reachable, as on iOS.
+  - `MatchAuthority` is immutable: `commit` and `adopt` return a new authority.
+  - `MatchOptions` now exists in both `engine/online/` and `:app` (`match/MatchMode.kt`). One should go (S21).
+- **Review fixes applied:** Replaced invented damaged-link blobs with real zlib- and gzip-wrapped streams; fixed the inflate-bomb test so it reaches the inflate limit. No production defects found.
