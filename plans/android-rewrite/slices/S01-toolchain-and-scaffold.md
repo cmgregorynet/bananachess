@@ -5,9 +5,9 @@ layer: infra
 points: 3
 depends_on: []
 touches: [Android/settings.gradle.kts, Android/build.gradle.kts, Android/gradle.properties, Android/gradle/, Android/gradlew, Android/gradlew.bat, Android/scripts/, Android/.gitignore, Android/.editorconfig, Android/engine/build.gradle.kts, Android/engine/src/main/kotlin/com/charlesbarton/bananachess/engine/EngineInfo.kt, Android/engine/src/test/kotlin/com/charlesbarton/bananachess/engine/EngineInfoTest.kt, Android/app/build.gradle.kts, Android/app/proguard-rules.pro, Android/app/src/main/AndroidManifest.xml, Android/app/src/main/res/, Android/app/src/main/kotlin/com/charlesbarton/bananachess/MainActivity.kt, Android/app/src/test/kotlin/com/charlesbarton/bananachess/ScaffoldTest.kt, Android/README.md]
-status: todo
-branch:
-started:
+status: in_progress
+branch: slice/android-rewrite/S01
+started: 2026-11-23T12:46
 completed:
 actual_points:
 review_fixes:

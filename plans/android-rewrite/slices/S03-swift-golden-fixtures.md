@@ -5,12 +5,12 @@ layer: backend
 points: 2
 depends_on: []
 touches: [Engine/Package.swift, Engine/Sources/GoldenFixtures/, Android/engine/src/test/resources/golden.json.gz]
-status: todo
-branch:
-started:
-completed:
-actual_points:
-review_fixes:
+status: done
+branch: slice/android-rewrite/S03
+started: 2026-11-23T12:46
+completed: 2026-11-23T12:50
+actual_points: 2
+review_fixes: added battle-step sampling to meet coverage criterion
 blocked_reason:
 ---
 
@@ -67,7 +67,11 @@ git diff --stat plan/android-rewrite...HEAD -- Web/ | /usr/bin/grep -c . || true
 2: one small Swift executable modelled on an existing one; the unknown is `@testable` access to the evaluation.
 
 ## Actuals
-- **Actual points:**
-- **What took longer / shorter than expected:**
+- **Actual points:** 2. The estimate was 2.
+- **What took longer / shorter than expected:** `@testable import` of the evaluation worked first time under `swift run`, so the expected unknown cost nothing. The only extra work was missing battle coverage.
 - **Surprises / unknowns that surfaced:**
-- **Review fixes applied:**
+  - The link blob is raw DEFLATE (never a zlib header); all 146 links inflate to exactly their payload JSON.
+  - `boardHistory` values above `Long.MAX_VALUE` occur (max 18405796021788992704).
+  - Not pinned by the fixture: `blenderRespawned`, `smoothie`, `turnPassed`, a draw outcome, win reasons other than score, and `\/` escaping inside a payload (no match id contains a slash).
+  - `respawnTurn` never appears; off-board pieces simply have no `position` key.
+- **Review fixes applied:** The fixed sample steps produced no sample with a blender battle in `lastMove`, so the generator also samples the first battle step in each game (146 samples, up from 144).
