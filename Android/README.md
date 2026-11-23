@@ -16,7 +16,7 @@ brew install --cask android-commandlinetools
 source Android/scripts/env.sh
 SDKMANAGER="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
 yes | "$SDKMANAGER" --licenses
-"$SDKMANAGER" "platform-tools" "platforms;android-37.2" "build-tools;37.0.0"
+"$SDKMANAGER" "platform-tools" "platforms;android-37.0" "platforms;android-37.2" "build-tools;37.0.0"
 ```
 
 `Android/scripts/env.sh` exports `JAVA_HOME` and `ANDROID_HOME` for the current shell. It does not touch shell profiles, so source it in every new shell before running Gradle.
