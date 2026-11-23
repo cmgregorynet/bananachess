@@ -5,12 +5,12 @@ layer: ui
 points: 2
 depends_on: [S13]
 touches: [Android/app/src/main/kotlin/com/charlesbarton/bananachess/rules/, Android/app/src/test/kotlin/com/charlesbarton/bananachess/rules/, Android/app/src/main/kotlin/com/charlesbarton/bananachess/BananaChessApp.kt]
-status: in_progress
+status: done
 branch: slice/android-rewrite/S14
 started: 2026-11-23T13:20
-completed:
-actual_points:
-review_fixes:
+completed: 2026-11-23T13:26
+actual_points: 2
+review_fixes: none
 blocked_reason:
 ---
 
@@ -73,7 +73,13 @@ cd Android && ./gradlew :app:testDebugUnitTest :app:lintDebug ktlintCheck :app:a
 2: static copy and a four-page pager.
 
 ## Actuals
-- **Actual points:**
-- **What took longer / shorter than expected:**
+- **Actual points:** 2. The estimate was 2.
+- **What took longer / shorter than expected:** About as expected.
 - **Surprises / unknowns that surfaced:**
-- **Review fixes applied:**
+  - Teaching page 4 now reads: "Run a blender into another and it destroys that one outright. A lost blender never comes back on its own: buying it back costs a turn and three points."
+  - The overlay is drawn in-tree, not as a dialog. Its scrim blocks taps, but TalkBack can still reach the board underneath and the system back button leaves the Match screen instead of closing the overlay. S17 must deal with both.
+  - `FirstMatchTeachingOverlay(settings)` shows only when the flag is unset, waits for settings to load, and writes the flag itself.
+  - The Rules route pops itself by name so a double press of "Done" cannot pop Home too. The Match and Invite placeholders still use a bare pop.
+  - The first commit was not built on its own.
+  - Outside `touches`: `ScaffoldTest.kt` (expected).
+- **Review fixes applied:** none. A scripted comparison of every string literal in `RulesView.swift` found all present except the intentionally corrected page 4.
