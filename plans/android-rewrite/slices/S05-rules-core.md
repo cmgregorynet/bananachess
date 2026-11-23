@@ -5,12 +5,12 @@ layer: domain
 points: 3
 depends_on: [S04]
 touches: [Android/engine/src/main/kotlin/com/charlesbarton/bananachess/engine/rules/, Android/engine/src/test/kotlin/com/charlesbarton/bananachess/engine/rules/]
-status: todo
-branch:
-started:
-completed:
-actual_points:
-review_fixes:
+status: done
+branch: slice/android-rewrite/S05
+started: 2026-11-23T13:03
+completed: 2026-11-23T13:10
+actual_points: 2
+review_fixes: removed empty test; fixed two wrong test expectations; apply validates once
 blocked_reason:
 ---
 
@@ -75,7 +75,11 @@ cd Android && ./gradlew :engine:test ktlintCheck
 3: the largest single Swift file, but split from S06 on purpose, with a step-by-step oracle that names the first step that differs.
 
 ## Actuals
-- **Actual points:**
-- **What took longer / shorter than expected:**
+- **Actual points:** 2. The estimate was 3.
+- **What took longer / shorter than expected:** Shorter. The port passed all 27 games on the first run because S04's updaters and canonical ordering matched the Swift shape closely. The slower part was hand-building small boards for the focused tests.
 - **Surprises / unknowns that surfaced:**
-- **Review fixes applied:**
+  - Until S06 lands, wildcard matches play by standard rules and battles-on matches use the plain kill. This is as specified, and is not shippable on its own.
+  - `turnPassed` never occurs in the 27 games; only a unit test covers it. The "neither player can act" branch of the turn end has no unit test (not reachable without a full board).
+  - The two argument-free `RulesError` cases are singleton throwables, so their stack traces are stale. Harmless here.
+  - Argument order is subject first, then state.
+- **Review fixes applied:** Removed a placeholder test that asserted nothing; fixed two tests with wrong expectations; simplified `apply` to validate once.

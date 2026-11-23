@@ -5,9 +5,9 @@ layer: ui
 points: 3
 depends_on: [S11, S04]
 touches: [Android/app/src/main/kotlin/com/charlesbarton/bananachess/art/PieceShapes.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/art/PieceArtwork.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/art/ArtCatalog.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/art/Palette.kt, Android/app/src/test/kotlin/com/charlesbarton/bananachess/art/PieceArtworkTest.kt]
-status: todo
-branch:
-started:
+status: in_progress
+branch: slice/android-rewrite/S12
+started: 2026-11-23T13:03
 completed:
 actual_points:
 review_fixes:
