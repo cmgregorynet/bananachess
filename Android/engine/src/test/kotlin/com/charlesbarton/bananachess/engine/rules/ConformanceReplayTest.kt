@@ -12,17 +12,19 @@ import kotlin.test.assertTrue
 
 /** Holds the Kotlin rules to the games the Swift engine recorded, move by move. */
 class ConformanceReplayTest {
-    /**
-     * The fixture games these rules can already play: standard rules, no blender battles.
-     * S06 widens this to every game by making [isInScope] true and [EXPECTED_GAMES] 108.
-     */
-    private fun isInScope(game: FixtureGame): Boolean = game.ruleSetValue == RuleSet.Standard && !game.blenderBattles
-
-    private val games: List<FixtureGame> get() = ConformanceFixture.games.filter(::isInScope)
+    private val games: List<FixtureGame> get() = ConformanceFixture.games
 
     @Test
-    fun `the replay covers every game in scope`() {
+    fun `the replay covers every game, both rule sets, with and without battles`() {
         assertEquals(EXPECTED_GAMES, games.size)
+        for (ruleSet in RuleSet.entries) {
+            for (battles in listOf(false, true)) {
+                assertTrue(
+                    games.any { it.ruleSetValue == ruleSet && it.blenderBattles == battles },
+                    "expected a ${ruleSet.rawValue} game with battles=$battles",
+                )
+            }
+        }
         assertTrue(games.any { it.outcome != null }, "expected at least one finished game")
         assertTrue(games.any { it.outcome == null }, "expected at least one game stopped at the step cap")
         assertTrue(games.sumOf { it.steps.size } > 1_000, "expected full-length games")
@@ -33,6 +35,6 @@ class ConformanceReplayTest {
         games.map { game -> dynamicTest(game.label) { replayFixtureGame(game) } }
 
     private companion object {
-        const val EXPECTED_GAMES = 27
+        const val EXPECTED_GAMES = 108
     }
 }

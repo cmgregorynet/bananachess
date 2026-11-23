@@ -1,5 +1,6 @@
 package com.charlesbarton.bananachess.engine.rules
 
+import com.charlesbarton.bananachess.engine.model.BattleReport
 import com.charlesbarton.bananachess.engine.model.BattleResolution
 import com.charlesbarton.bananachess.engine.model.Board
 import com.charlesbarton.bananachess.engine.model.Direction
@@ -16,14 +17,14 @@ import com.charlesbarton.bananachess.engine.model.PlayerId
 import com.charlesbarton.bananachess.engine.model.Position
 import com.charlesbarton.bananachess.engine.model.RestoreBlender
 import com.charlesbarton.bananachess.engine.model.Scores
+import com.charlesbarton.bananachess.engine.random.SplitMix64
 
 /**
  * The single deterministic transition path shared by local play, the CPU, and the
  * network. Stateless by design: every function is a pure function of the state given.
  *
  * A port of `Engine/Sources/BananaChessEngine/RulesEngine.swift`, which is the
- * specification. The wildcard rules live behind [WildcardRules] and the dice battle
- * behind [resolveCollision]; both are filled in by S06.
+ * specification. The wildcard rules live in [WildcardRules].
  */
 object RulesEngine {
     /**
@@ -45,6 +46,23 @@ object RulesEngine {
      * This is what finally bounds a match.
      */
     const val REPETITION_LIMIT: Int = 3
+
+    /**
+     * What a blender adds to its side of a battle for being the one going in. One, and
+     * paired with ties going to the defender.
+     */
+    const val BATTLE_ATTACKER_BONUS: Int = 1
+
+    /** What completing a Tropical Smoothie pays its maker, once per match. */
+    const val SMOOTHIE_AWARD: Int = 3
+
+    /**
+     * How long the opponent went without blenders when a smoothie blew them up.
+     *
+     * **Retained, unused.** Smoothies pay points now. This and the pour are kept intact
+     * and tested so the blowout can be switched back on.
+     */
+    const val SMOOTHIE_BLACKOUT_TURNS: Int = 2
 
     /** The new state and the ordered events one action produced. */
     data class Transition(
@@ -292,16 +310,12 @@ object RulesEngine {
     }
 
     /**
-     * Settles a blender running into another. Without battles the defender is destroyed
-     * outright and the attacker takes the square.
+     * Settles a blender running into another: a battle if the match is playing them,
+     * otherwise the plain kill, where the defender is destroyed and the attacker takes
+     * the square.
      *
-     * **S06 seam.** When `turn.state.blenderBattles` is on and the two blenders belong to
-     * different players, S06 fights it out here instead: build the `BattleReport` from
-     * the state *before* the move (dice from `positionKey`, or 4 and 4 for
-     * [BattleResolution.Expected]), emit `BlenderBattle`, then destroy whichever lost.
-     * A losing attacker leaves the board and the defender keeps the square
-     * (`RulesEngine.swift:401-474`). Until then [battles] is unused and every collision
-     * is the plain kill.
+     * A battle is only ever between two *players*, so running into one of your own
+     * blenders still destroys it outright: there is nobody to roll against.
      */
     private fun resolveCollision(
         attacker: Piece,
@@ -310,9 +324,73 @@ object RulesEngine {
         battles: BattleResolution,
         turn: TurnInProgress,
     ) {
-        destroy(victim = defender, by = attacker, square, turn)
-        turn.setPosition(square, attacker.id)
+        if (!turn.state.blenderBattles || defender.owner == attacker.owner) {
+            destroy(victim = defender, by = attacker, square, turn)
+            turn.setPosition(square, attacker.id)
+            return
+        }
+
+        // Nothing has moved yet, so this is still the position the move was made from.
+        val report = battleReport(attacker, defender, square, battles, turn.state)
+        turn.emit(GameEvent.BlenderBattle(report, square))
+
+        if (report.attackerWins) {
+            destroy(victim = defender, by = attacker, square, turn)
+            turn.setPosition(square, attacker.id)
+        } else {
+            // The attack failed: the attacker is the one that leaves, and the defender
+            // holds the square it was already standing on.
+            destroy(victim = attacker, by = defender, square, turn)
+        }
     }
+
+    /**
+     * Both dice come from the position itself, so two devices given the same move
+     * compute the same battle. Salted differently per side so the two rolls are not the
+     * same number, and salted with the square so two battles in one position differ.
+     */
+    private fun battleReport(
+        attacker: Piece,
+        defender: Piece,
+        square: Position,
+        battles: BattleResolution,
+        state: GameState,
+    ): BattleReport {
+        val attackerRoll: Int
+        val defenderRoll: Int
+        when (battles) {
+            BattleResolution.Dice -> {
+                val base = state.positionKey + Occupancy.index(square).toULong()
+                attackerRoll = die(base + ATTACKER_DIE_SALT)
+                defenderRoll = die(base + DEFENDER_DIE_SALT)
+            }
+
+            BattleResolution.Expected -> {
+                // Any equal pair does: being the same on both sides it cancels. Four is
+                // the rounded mean of a die, so the totals the CPU reasons about are at
+                // least the right size.
+                attackerRoll = EXPECTED_ROLL
+                defenderRoll = EXPECTED_ROLL
+            }
+        }
+
+        return BattleReport(
+            attacker = attacker.owner,
+            attackerFruit = state.battleStrength(attacker.owner),
+            attackerBonus = BATTLE_ATTACKER_BONUS,
+            attackerRoll = attackerRoll,
+            defenderFruit = state.battleStrength(defender.owner),
+            defenderRoll = defenderRoll,
+        )
+    }
+
+    private const val ATTACKER_DIE_SALT: ULong = 0x9E3779B9uL
+    private const val DEFENDER_DIE_SALT: ULong = 0x85EBCA6BuL
+    private const val DIE_SIDES: ULong = 6uL
+    private const val EXPECTED_ROLL: Int = 4
+
+    /** The remainder is taken unsigned, as the Swift engine takes it. */
+    private fun die(seed: ULong): Int = (SplitMix64(seed).next() % DIE_SIDES).toInt() + 1
 
     private fun destroy(
         victim: Piece,
