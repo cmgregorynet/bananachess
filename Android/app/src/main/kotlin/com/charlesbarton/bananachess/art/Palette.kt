@@ -1,6 +1,7 @@
 package com.charlesbarton.bananachess.art
 
 import androidx.compose.ui.graphics.Color
+import com.charlesbarton.bananachess.engine.model.PieceKind
 
 /**
  * The locked palette. Nothing in the app names a colour that is not in here, and nothing here is
@@ -57,6 +58,15 @@ object Palette {
         when (seat) {
             PlayerSeat.Bottom -> clayDeep
             PlayerSeat.Top -> indigoDeep
+        }
+
+    /** What a piece is painted in, whoever owns it. The Golden Pineapple swaps its wash for [amber]. */
+    fun wash(kind: PieceKind): Color =
+        when (kind) {
+            PieceKind.Banana -> bananaWash
+            PieceKind.Strawberry -> strawberryWash
+            PieceKind.Pineapple -> pineappleWash
+            PieceKind.Blender -> blenderGlass
         }
 
     /** Panels stay light for both players; ownership there is carried by the tint and the name. */
