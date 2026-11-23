@@ -5,12 +5,12 @@ layer: test
 points: 3
 depends_on: [S06]
 touches: [Android/engine/src/test/kotlin/com/charlesbarton/bananachess/engine/rulesported/, Android/engine/src/test/kotlin/com/charlesbarton/bananachess/engine/support/BoardBuilder.kt]
-status: in_progress
+status: done
 branch: slice/android-rewrite/S07
 started: 2026-11-23T13:16
-completed:
-actual_points:
-review_fixes:
+completed: 2026-11-23T13:26
+actual_points: 3
+review_fixes: one loop simplified
 blocked_reason:
 ---
 
@@ -69,7 +69,12 @@ cd .. && git diff --stat plan/android-rewrite...HEAD -- Android/engine/src/main 
 3: mostly mechanical, but about 130 tests and a test builder to translate.
 
 ## Actuals
-- **Actual points:**
-- **What took longer / shorter than expected:**
+- **Actual points:** 3. The estimate was 3.
+- **What took longer / shorter than expected:** Every ported test passed on the first run, so there was no debugging. Reading the engine and deciding what the existing Kotlin tests already cover took the time.
 - **Surprises / unknowns that surfaced:**
-- **Review fixes applied:**
+  - 121 Swift tests ported (138 JUnit tests); none failed and none is disabled. Production code untouched.
+  - **One scope item not met:** "both Blenderama defence tests". Both compare `Evaluation.score`, which was not in Kotlin when this slice branched. One is skipped and one is ported for its rules half only. Closed by S25.
+  - Skipped because they need the CPU: `randomBoardsPlayThrough`, `wrappedMatchesTerminate`, `eventReplayHoldsAcrossAMatch`, `nothingRunsForever`. Skipped because they need the payload codec: `setupSurvivesEncoding`, `wrapSurvivesEncoding`, `codableRoundTrip`, `encodingIsStable`. Closed by S25.
+  - Skipped as exact duplicates of existing Kotlin tests: `newGameSetup`, `mirroredFruitOrder`, `randomNeverDealsAFreeDelivery`.
+  - There is no Swift test for "neither player can act"; it stays covered only by Kotlin-written tests.
+- **Review fixes applied:** One loop simplified. Nothing else found.

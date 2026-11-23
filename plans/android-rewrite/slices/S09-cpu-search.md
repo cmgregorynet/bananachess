@@ -5,9 +5,9 @@ layer: domain
 points: 3
 depends_on: [S08]
 touches: [Android/engine/src/main/kotlin/com/charlesbarton/bananachess/engine/cpu/CpuPlayer.kt, Android/engine/src/main/kotlin/com/charlesbarton/bananachess/engine/cpu/SearchPlan.kt, Android/engine/src/main/kotlin/com/charlesbarton/bananachess/engine/cpu/Search.kt, Android/engine/src/test/kotlin/com/charlesbarton/bananachess/engine/cpu/CpuPlayerTest.kt]
-status: todo
-branch:
-started:
+status: in_progress
+branch: slice/android-rewrite/S09
+started: 2026-11-23T13:21
 completed:
 actual_points:
 review_fixes:
