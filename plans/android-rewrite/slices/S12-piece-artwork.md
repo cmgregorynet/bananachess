@@ -5,12 +5,12 @@ layer: ui
 points: 3
 depends_on: [S11, S04]
 touches: [Android/app/src/main/kotlin/com/charlesbarton/bananachess/art/PieceShapes.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/art/PieceArtwork.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/art/ArtCatalog.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/art/Palette.kt, Android/app/src/test/kotlin/com/charlesbarton/bananachess/art/PieceArtworkTest.kt]
-status: in_progress
+status: done
 branch: slice/android-rewrite/S12
 started: 2026-11-23T13:03
-completed:
-actual_points:
-review_fixes:
+completed: 2026-11-23T13:11
+actual_points: 3
+review_fixes: tray clip moved to draw phase (no semantics node); zero-size test
 blocked_reason:
 ---
 
@@ -76,7 +76,13 @@ cd Android && ./gradlew :app:testDebugUnitTest :app:lintDebug ktlintCheck :app:a
 3: eight Bézier shapes and layered drawing to transcribe carefully.
 
 ## Actuals
-- **Actual points:**
-- **What took longer / shorter than expected:**
+- **Actual points:** 3. The estimate was 3.
+- **What took longer / shorter than expected:** The Bézier transcription and layering went as estimated. Keeping the piece out of the accessibility tree took three attempts, and the halo took a little longer as a computed gradient.
 - **Surprises / unknowns that surfaced:**
-- **Review fixes applied:**
+  - `Modifier.clip(shape)` adds a semantics node in this Compose version. Anything that must stay out of the accessibility tree has to clip in the draw phase. S16 and S18 need this.
+  - The golden halo is a radial gradient following a Gaussian profile, not a blur filter, because blur mask filters are not honoured on older hardware canvases. It assumes SwiftUI's blur radius equals the Gaussian sigma.
+  - The halo draws outside the piece's bounds; a clipping parent will trim it.
+  - Reduced motion is read once per composition, not observed live.
+  - `modifier` is the first optional parameter of `PieceArtwork` (lint requires it); call with named arguments.
+  - The sprite lookup uses `Resources.getIdentifier`; future sprite drawables will need a keep rule once resource shrinking is on (S23).
+- **Review fixes applied:** Moved the tray clip to the draw phase so a piece adds no semantics node; restructured the pixel test into one grid; added a zero-size test.
