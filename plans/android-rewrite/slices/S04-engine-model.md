@@ -5,9 +5,9 @@ layer: domain
 points: 3
 depends_on: [S01]
 touches: [Android/engine/src/main/kotlin/com/charlesbarton/bananachess/engine/model/, Android/engine/src/main/kotlin/com/charlesbarton/bananachess/engine/setup/, Android/engine/src/main/kotlin/com/charlesbarton/bananachess/engine/random/, Android/engine/src/main/kotlin/com/charlesbarton/bananachess/engine/cpu/CpuDifficulty.kt, Android/engine/src/main/kotlin/com/charlesbarton/bananachess/engine/EngineInfo.kt, Android/engine/src/test/kotlin/com/charlesbarton/bananachess/engine/EngineInfoTest.kt, Android/engine/src/test/kotlin/com/charlesbarton/bananachess/engine/model/, Android/engine/src/test/kotlin/com/charlesbarton/bananachess/engine/setup/, Android/engine/src/test/kotlin/com/charlesbarton/bananachess/engine/random/, Android/engine/src/test/kotlin/com/charlesbarton/bananachess/engine/support/]
-status: todo
-branch:
-started:
+status: in_progress
+branch: slice/android-rewrite/S04
+started: 2026-11-23T12:54
 completed:
 actual_points:
 review_fixes:

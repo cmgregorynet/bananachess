@@ -5,12 +5,12 @@ layer: infra
 points: 1
 depends_on: [S01]
 touches: [.github/workflows/android.yml]
-status: todo
-branch:
-started:
-completed:
-actual_points:
-review_fixes:
+status: done
+branch: slice/android-rewrite/S02
+started: 2026-11-23T12:54
+completed: 2026-11-23T12:56
+actual_points: 1
+review_fixes: none
 blocked_reason:
 ---
 
@@ -70,7 +70,10 @@ cd Android && ./gradlew :engine:test :app:testDebugUnitTest :app:lintDebug ktlin
 1: one workflow file following an existing pattern.
 
 ## Actuals
-- **Actual points:**
-- **What took longer / shorter than expected:**
+- **Actual points:** 1. The estimate was 1.
+- **What took longer / shorter than expected:** As expected.
 - **Surprises / unknowns that surfaced:**
-- **Review fixes applied:**
+  - The workflow has not run on GitHub yet. It triggers on pull requests and pushes to `main`, so its first real run is the pull request for this plan.
+  - `gradle/actions` v6 defaults to a cache provider that is only a free preview for private repositories; the workflow sets `cache-provider: basic`.
+  - Added beyond the literal scope, inside the one file: read-only permissions, a concurrency group, a 30-minute timeout.
+- **Review fixes applied:** none.

@@ -5,9 +5,9 @@ layer: ui
 points: 3
 depends_on: [S01]
 touches: [Android/app/src/main/kotlin/com/charlesbarton/bananachess/art/Palette.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/art/Paper.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/art/PaperTheme.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/art/PaperButton.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/art/WatercolorWash.kt, Android/app/src/test/kotlin/com/charlesbarton/bananachess/art/]
-status: todo
-branch:
-started:
+status: in_progress
+branch: slice/android-rewrite/S11
+started: 2026-11-23T12:54
 completed:
 actual_points:
 review_fixes:
