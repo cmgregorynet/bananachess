@@ -5,12 +5,12 @@ layer: domain
 points: 3
 depends_on: [S08]
 touches: [Android/engine/src/main/kotlin/com/charlesbarton/bananachess/engine/cpu/CpuPlayer.kt, Android/engine/src/main/kotlin/com/charlesbarton/bananachess/engine/cpu/SearchPlan.kt, Android/engine/src/main/kotlin/com/charlesbarton/bananachess/engine/cpu/Search.kt, Android/engine/src/test/kotlin/com/charlesbarton/bananachess/engine/cpu/CpuPlayerTest.kt]
-status: in_progress
+status: done
 branch: slice/android-rewrite/S09
 started: 2026-11-23T13:21
-completed:
-actual_points:
-review_fixes:
+completed: 2026-11-23T13:30
+actual_points: 3
+review_fixes: one test's node-count assumption corrected; no logic errors
 blocked_reason:
 ---
 
@@ -74,7 +74,13 @@ cd Android && ./gradlew :engine:test ktlintCheck
 3: an intricate search, but no cross-device exactness is required (iOS itself is time-dependent), and 12 tests carry over.
 
 ## Actuals
-- **Actual points:**
-- **What took longer / shorter than expected:**
+- **Actual points:** 3. The estimate was 3.
+- **What took longer / shorter than expected:** Performance needed no work. Making the "never-expiring clock" determinism check feasible for Hard and Brutal, and choosing which tests use a fake clock, took longer.
 - **Surprises / unknowns that surfaced:**
-- **Review fixes applied:**
+  - Measured on this Mac: Medium completes its full depth 4 in 5 to 10 ms; Hard reaches depth 7 to 8 at about 240k nodes per second; Brutal reaches depth 7 to 8 at about 350k nodes per second.
+  - Hard and Brutal almost always think for their full hard cap (2 s and 4 s), because the soft budget is only checked between iterations and the next iteration never finishes. This matches Swift. S19 should expect those thinking times.
+  - The determinism criterion is met with a caveat: the never-expiring clock is used on three small positions with a forced result, since depth 12 cannot finish on the opening without a clock. The opening is covered by a deterministic stepping clock.
+  - The engine suite now takes about 13 s, 6 s of it one real-clock time-cap test.
+  - All 12 Swift CPU tests are ported (4 unchanged, 6 adapted to a fake clock, 1 widened to all levels, none skipped); 8 tests added.
+  - `CpuPlayer` is synchronous and stateless; `SearchPlan.previous` was not ported.
+- **Review fixes applied:** One test had a wrong node-count assumption and was corrected. No logic errors found against the Swift source.
