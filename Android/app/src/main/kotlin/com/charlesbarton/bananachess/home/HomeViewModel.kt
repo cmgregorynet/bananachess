@@ -1,0 +1,125 @@
+package com.charlesbarton.bananachess.home
+
+import androidx.lifecycle.ViewModel
+import com.charlesbarton.bananachess.engine.cpu.CpuDifficulty
+import com.charlesbarton.bananachess.engine.model.BoardSetup
+import com.charlesbarton.bananachess.engine.model.BoardWrap
+import com.charlesbarton.bananachess.engine.model.GameState
+import com.charlesbarton.bananachess.engine.model.PlayerId
+import com.charlesbarton.bananachess.engine.model.RuleSet
+import com.charlesbarton.bananachess.engine.setup.GameSetup
+import com.charlesbarton.bananachess.match.MatchMode
+import com.charlesbarton.bananachess.match.MatchOptions
+import com.charlesbarton.bananachess.match.MatchStart
+import com.charlesbarton.bananachess.settings.Settings
+import com.charlesbarton.bananachess.settings.SettingsStore
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.launch
+
+/** What the start screen shows: the six choices that are remembered between launches. */
+data class HomeUiState(
+    val difficulty: CpuDifficulty = CpuDifficulty.Medium,
+    val humanPlaysFirst: Boolean = true,
+    val usesWildcardRules: Boolean = false,
+    val boardSetup: BoardSetup = BoardSetup.Standard,
+    val boardWrap: BoardWrap = BoardWrap.Flat,
+    val blenderBattles: Boolean = false,
+)
+
+class HomeViewModel(
+    private val settings: SettingsStore,
+    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+) : ViewModel(scope) {
+    private val mutableState = MutableStateFlow(HomeUiState())
+    val state: StateFlow<HomeUiState> = mutableState.asStateFlow()
+
+    // A choice made before the stored settings arrive is the newer of the two, so it is kept.
+    private var hasEdited = false
+
+    private val loading =
+        scope.launch {
+            val stored = settings.settings.first()
+            if (!hasEdited) mutableState.value = stored.toUiState()
+        }
+
+    val options: MatchOptions
+        get() =
+            with(state.value) {
+                MatchOptions(
+                    ruleSet = if (usesWildcardRules) RuleSet.Wildcard else RuleSet.Standard,
+                    boardSetup = boardSetup,
+                    boardWrap = boardWrap,
+                    blenderBattles = blenderBattles,
+                )
+            }
+
+    fun setDifficulty(difficulty: CpuDifficulty) =
+        change({ it.copy(difficulty = difficulty) }) { it.copy(cpuDifficulty = difficulty) }
+
+    fun setHumanPlaysFirst(humanPlaysFirst: Boolean) =
+        change({ it.copy(humanPlaysFirst = humanPlaysFirst) }) { it.copy(cpuHumanPlaysFirst = humanPlaysFirst) }
+
+    fun setUsesWildcardRules(usesWildcardRules: Boolean) =
+        change({ it.copy(usesWildcardRules = usesWildcardRules) }) { it.copy(wildcardRulesEnabled = usesWildcardRules) }
+
+    fun setBoardSetup(boardSetup: BoardSetup) =
+        change({ it.copy(boardSetup = boardSetup) }) { it.copy(boardSetup = boardSetup) }
+
+    fun setBoardWrap(boardWrap: BoardWrap) =
+        change({ it.copy(boardWrap = boardWrap) }) { it.copy(boardWrap = boardWrap) }
+
+    fun setBlenderBattles(blenderBattles: Boolean) =
+        change({ it.copy(blenderBattles = blenderBattles) }) { it.copy(blenderBattles = blenderBattles) }
+
+    /** A fresh pass-and-play match on the board the options describe. */
+    fun startLocal(): MatchStart = MatchStart(mode = MatchMode.LocalVersus, state = newGame())
+
+    /** A fresh match against the CPU. Player one always moves first, so the human is player two when the CPU opens. */
+    fun startComputer(): MatchStart {
+        val current = state.value
+        val humanPlays = if (current.humanPlaysFirst) PlayerId.One else PlayerId.Two
+        return MatchStart(mode = MatchMode.Computer(current.difficulty, humanPlays), state = newGame())
+    }
+
+    private fun newGame(): GameState =
+        with(options) {
+            GameSetup.newGame(
+                startingPlayer = PlayerId.One,
+                ruleSet = ruleSet,
+                boardSetup = boardSetup,
+                boardWrap = boardWrap,
+                blenderBattles = blenderBattles,
+            )
+        }
+
+    // The screen changes at once; the store catches up, one field at a time so that a write
+    // never puts back a stale copy of some other setting.
+    private fun change(
+        onScreen: (HomeUiState) -> HomeUiState,
+        stored: (Settings) -> Settings,
+    ) {
+        hasEdited = true
+        mutableState.update(onScreen)
+        scope.launch {
+            loading.join()
+            settings.update(stored)
+        }
+    }
+}
+
+private fun Settings.toUiState(): HomeUiState =
+    HomeUiState(
+        difficulty = cpuDifficulty,
+        humanPlaysFirst = cpuHumanPlaysFirst,
+        usesWildcardRules = wildcardRulesEnabled,
+        boardSetup = boardSetup,
+        boardWrap = boardWrap,
+        blenderBattles = blenderBattles,
+    )
