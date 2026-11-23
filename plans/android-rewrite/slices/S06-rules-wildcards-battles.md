@@ -5,12 +5,12 @@ layer: domain
 points: 3
 depends_on: [S05]
 touches: [Android/engine/src/main/kotlin/com/charlesbarton/bananachess/engine/rules/, Android/engine/src/test/kotlin/com/charlesbarton/bananachess/engine/rules/]
-status: in_progress
+status: done
 branch: slice/android-rewrite/S06
 started: 2026-11-23T13:10
-completed:
-actual_points:
-review_fixes:
+completed: 2026-11-23T13:16
+actual_points: 3
+review_fixes: one wrong test expectation; helper replaced; no production defects
 blocked_reason:
 ---
 
@@ -72,7 +72,11 @@ cd Android && ./gradlew :engine:test ktlintCheck
 3: wildcard bookkeeping has many small ordering rules; the 81 remaining fixture games catch each one.
 
 ## Actuals
-- **Actual points:**
-- **What took longer / shorter than expected:**
+- **Actual points:** 3. The estimate was 3.
+- **What took longer / shorter than expected:** The S05 seams were exact, so all 108 games passed on the first run with nothing in `RulesEngine` needing to move. Hand-building boards for the unit tests took the time.
 - **Surprises / unknowns that surfaced:**
-- **Review fixes applied:**
+  - Covered only by local unit tests, not by Swift-generated data: `BattleResolution.Expected` (the CPU's dice), a blender running into its own blender with battles on, the retained smoothie blast, scheduled blender returns, and `applying` for `Smoothie`, `BlenderRespawned` and `TurnPassed`.
+  - `GameState.applying(event)` lives in the `rules` package, so callers import it from there.
+  - The oracle was sanity-checked by mutation: changing the attacker bonus failed 41 tests; inverting the wildcard-banana branch in `applying` failed 6.
+  - The engine suite replays all 108 games twice and still runs in about 4 seconds.
+- **Review fixes applied:** One wrong expectation in a new test; a pointless helper replaced with the real `wildcardStanding`. No production defects found.

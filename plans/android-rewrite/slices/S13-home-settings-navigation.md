@@ -5,9 +5,9 @@ layer: ui
 points: 3
 depends_on: [S12]
 touches: [Android/app/src/main/kotlin/com/charlesbarton/bananachess/settings/, Android/app/src/main/kotlin/com/charlesbarton/bananachess/home/, Android/app/src/main/kotlin/com/charlesbarton/bananachess/BananaChessApp.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/MainActivity.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/MatchMode.kt, Android/app/src/test/kotlin/com/charlesbarton/bananachess/settings/, Android/app/src/test/kotlin/com/charlesbarton/bananachess/home/, Android/app/src/test/kotlin/com/charlesbarton/bananachess/ScaffoldTest.kt]
-status: todo
-branch:
-started:
+status: in_progress
+branch: slice/android-rewrite/S13
+started: 2026-11-23T13:11
 completed:
 actual_points:
 review_fixes:
