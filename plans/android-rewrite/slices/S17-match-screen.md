@@ -33,6 +33,10 @@ A complete local match on a phone: start from Home, play, see the result, play a
 - Replace the Match placeholder route in `BananaChessApp.kt`: Home's "Local Two Player" starts a `LocalVersus` match built from the current options.
 - Large font sizes: the scoreboards and controls wrap or scroll; the board keeps its size.
 - **Established by S12:** `Modifier.clip(shape)` and `graphicsLayer { clip = true }` each add a semantics node in this Compose version. Anything that must stay out of the accessibility tree clips in the draw phase instead (see the tray in `art/PieceArtwork.kt`). `PieceArtwork(kind, seat, modifier, isGolden, showsTray)` takes named arguments, needs a bounded size, and its golden halo draws outside its bounds. `isReducedMotion(context)` lives in `art/PieceArtwork.kt`.
+- **Established by S13 and S14 (read `BananaChessApp.kt`, `rules/TeachingOverlay.kt`, `home/`):**
+  - The match start arrives through `graph.matchStart.current` (`MatchStart(mode, state)`), which is **null after process death**. When it is null the Match route returns to Home; it must not crash or show an empty board.
+  - Host the overlay with `FirstMatchTeachingOverlay(settings = graph.settings)` as the last child of the Match screen's root. It is drawn in-tree, so while it is showing you must (1) hide the board and controls from TalkBack, and (2) make the system back button close the overlay (marking it seen) instead of leaving the match. Add tests for both.
+  - Pop routes by name (`popBackStack(Route.Match, inclusive = true)`), as the Rules route does, so a double press cannot pop Home too. `ScaffoldTest` asserts on `PlaceholderTags.MATCH`; update it for the real screen (outside `touches`, expected).
 
 ### Toolchain facts established by S01 (read before writing code)
 - Versions are pinned in `Android/gradle/libs.versions.toml`: Gradle 9.9.2, AGP 9.5.2 (built-in Kotlin, so `:app` has no `kotlin-android` plugin), Kotlin 2.4.21, compileSdk 37.2, targetSdk 37, minSdk 26, Compose BOM 2026.11.01.

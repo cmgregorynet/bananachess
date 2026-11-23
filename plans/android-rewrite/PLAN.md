@@ -7,7 +7,7 @@ approved: 2026-11-23T12:45
 base_branch: main
 feature_branch: plan/android-rewrite
 max_parallel: 5
-total_points: 62
+total_points: 63
 ---
 
 # Banana Chess for Android (native Kotlin rewrite)
@@ -64,9 +64,10 @@ Order of work: infrastructure → backend/data → domain/services → UI → po
 | S21 | Add play-by-link match logic | ui | 3 | S20 |
 | S22 | Wire play-by-link into Android: deep links, sharing and error alerts | ui | 2 | S21 |
 | S23 | Add the app icon and a release build configuration | infra | 2 | S22 |
-| S24 | Document the Android app | docs | 1 | S23, S07, S02 |
+| S24 | Document the Android app | docs | 1 | S23, S07, S02, S25 |
+| S25 | Port the Swift engine tests that needed the CPU, the evaluation or the codec (added during execution, after S07) | test | 1 | S07, S09, S10 |
 
-**Total:** 62 points across 24 slices. No slice is larger than 3.
+**Total:** 63 points across 25 slices. No slice is larger than 3. (62 points and 24 slices when approved; S25 was added during execution to close a gap S07 reported.)
 
 ### Dependency Graph
 ```mermaid
@@ -96,6 +97,10 @@ graph LR
   S20 --> S21 --> S22 --> S23 --> S24
   S07 --> S24
   S02 --> S24
+  S07 --> S25
+  S09 --> S25
+  S10 --> S25
+  S25 --> S24
 ```
 
 ### Execution Waves

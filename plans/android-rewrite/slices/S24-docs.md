@@ -3,7 +3,7 @@ id: S24
 title: Document the Android app
 layer: docs
 points: 1
-depends_on: [S23, S07, S02]
+depends_on: [S23, S07, S02, S25]
 touches: [Android/README.md, README.md, DECISIONS.md]
 status: todo
 branch:
