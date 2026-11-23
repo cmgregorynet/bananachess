@@ -1,6 +1,8 @@
 [versions]
 # Toolchain. AGP 9.5 needs Gradle >= 9.6 and JDK 17, and supports up to API 37.
-# Robolectric 4.18 runs API 37. Check all of these together before bumping one.
+# Compose 1.13 (BOM 2026.11.01) needs compileSdk >= 37.1.
+# Robolectric 4.18 needs Java 21 for API 36+, so on JDK 17 the tests simulate API 35
+# (app/src/test/resources/robolectric.properties). Check all of these together before bumping one.
 agp = "9.5.2"
 kotlin = "2.4.21"
 jvm = "17"
