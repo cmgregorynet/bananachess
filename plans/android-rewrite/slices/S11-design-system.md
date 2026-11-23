@@ -5,12 +5,12 @@ layer: ui
 points: 3
 depends_on: [S01]
 touches: [Android/app/src/main/kotlin/com/charlesbarton/bananachess/art/Palette.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/art/Paper.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/art/PaperTheme.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/art/PaperButton.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/art/WatercolorWash.kt, Android/app/src/test/kotlin/com/charlesbarton/bananachess/art/]
-status: in_progress
+status: done
 branch: slice/android-rewrite/S11
 started: 2026-11-23T12:54
-completed:
-actual_points:
-review_fixes:
+completed: 2026-11-23T13:00
+actual_points: 3
+review_fixes: deprecated paint API; stronger grain pixel test
 blocked_reason:
 ---
 
@@ -77,7 +77,12 @@ cd .. && /usr/bin/grep -rn --include='*.kt' -E "Color\.Black|darkColorScheme" An
 3: five visual components and a deterministic texture; no logic risk.
 
 ## Actuals
-- **Actual points:**
-- **What took longer / shorter than expected:**
+- **Actual points:** 3. The estimate was 3.
+- **What took longer / shorter than expected:** Slightly shorter. Robolectric's native graphics rendered real pixels first try, so the components have pixel-level tests and not only semantics tests.
 - **Surprises / unknowns that surfaced:**
-- **Review fixes applied:**
+  - Nothing was looked at on a device or rendered preview. Fidelity to iOS is checked only by pixel tests (the panel is grained cream; a wash stays inside its shape).
+  - The pooled-edge blur uses `BlurMaskFilter` at 2.2 dp. Whether it matches SwiftUI's blur in softness is unverified.
+  - The grain tile is rasterised at the rounded screen density, so pixels are not byte-identical to the iOS tile; the speckle sequence is.
+  - `PaperButton` has no ripple and a disabled alpha of 0.45 (a choice; iOS has no explicit value).
+  - `Palette.wash(kind)` is left for S12 because it needs the engine's `PieceKind`.
+- **Review fixes applied:** Replaced a deprecated paint API that failed to compile; strengthened the panel pixel test to assert grain is present; reworded an unverified comment.
