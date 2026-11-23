@@ -5,12 +5,12 @@ layer: ui
 points: 3
 depends_on: [S15, S12]
 touches: [Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/BoardView.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/SquareView.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/DestroyedBlenderMarker.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/FlashPill.kt, Android/app/src/test/kotlin/com/charlesbarton/bananachess/match/BoardViewTest.kt]
-status: in_progress
+status: done
 branch: slice/android-rewrite/S16
 started: 2026-11-23T13:31
-completed:
-actual_points:
-review_fixes:
+completed: 2026-11-23T13:42
+actual_points: 3
+review_fixes: one marker per spawn; board pinned LTR; realistic test screen size
 blocked_reason:
 ---
 
@@ -75,7 +75,12 @@ cd Android && ./gradlew :app:testDebugUnitTest :app:lintDebug ktlintCheck :app:a
 3: custom drawing plus the accessibility structure that the smoke tests depend on.
 
 ## Actuals
-- **Actual points:**
-- **What took longer / shorter than expected:**
+- **Actual points:** 3. The estimate was 3.
+- **What took longer / shorter than expected:** Rotation was shorter: the board maps display cells to engine positions instead of turning anything, so pieces and text are upright for free. Keeping every label out of the accessibility tree took longer; the flash and marker text are painted with a text measurer.
 - **Surprises / unknowns that surfaced:**
-- **Review fixes applied:**
+  - Wrap seams are drawn above the squares so they are visible. By a reading of `BoardView.swift` they sit under 36 opaque squares on iOS and may be hidden there (not confirmed on a device).
+  - With the exact iOS offsets, a long flash label on the right-hand columns runs off the board's right edge. Clamping is added to S17.
+  - Reduced motion has no separate code path: with the animator scale at 0, Compose finishes the spring and fades at once.
+  - Restart and undo slide pieces back to their squares, a side effect of keying pieces by id.
+  - The board draws its border 6 dp outside its bounds; the host must leave room and must not clip it.
+- **Review fixes applied:** One marker per spawn when two destroyed blenders offer the same square; the board is pinned to left-to-right layout; tests run at a realistic screen size.
