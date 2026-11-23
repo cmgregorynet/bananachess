@@ -5,9 +5,9 @@ layer: ui
 points: 2
 depends_on: [S13]
 touches: [Android/app/src/main/kotlin/com/charlesbarton/bananachess/rules/, Android/app/src/test/kotlin/com/charlesbarton/bananachess/rules/, Android/app/src/main/kotlin/com/charlesbarton/bananachess/BananaChessApp.kt]
-status: todo
-branch:
-started:
+status: in_progress
+branch: slice/android-rewrite/S14
+started: 2026-11-23T13:20
 completed:
 actual_points:
 review_fixes:

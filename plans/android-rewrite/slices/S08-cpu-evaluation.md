@@ -5,12 +5,12 @@ layer: domain
 points: 3
 depends_on: [S06, S03]
 touches: [Android/engine/src/main/kotlin/com/charlesbarton/bananachess/engine/cpu/Evaluation.kt, Android/engine/src/main/kotlin/com/charlesbarton/bananachess/engine/cpu/EvaluationWeights.kt, Android/engine/src/test/kotlin/com/charlesbarton/bananachess/engine/cpu/EvaluationGoldenTest.kt, Android/engine/src/test/kotlin/com/charlesbarton/bananachess/engine/support/GoldenFixture.kt]
-status: in_progress
+status: done
 branch: slice/android-rewrite/S08
 started: 2026-11-23T13:16
-completed:
-actual_points:
-review_fixes:
+completed: 2026-11-23T13:21
+actual_points: 2
+review_fixes: hand-pinned tests for three branches the golden data never reaches
 blocked_reason:
 ---
 
@@ -67,7 +67,11 @@ cd Android && ./gradlew :engine:test ktlintCheck
 3: 378 lines of integer arithmetic with an exact per-position oracle.
 
 ## Actuals
-- **Actual points:**
-- **What took longer / shorter than expected:**
+- **Actual points:** 2. The estimate was 3.
+- **What took longer / shorter than expected:** Shorter. The port matched all 146 golden samples on first compile, because S04 to S06 already provided every lookup the evaluation needs. The extra time went on measuring what the golden data does not cover and pinning those cases by hand.
 - **Surprises / unknowns that surfaced:**
-- **Review fixes applied:**
+  - The golden samples do not exercise: a draw or a wildcard win; a blender awaiting respawn (the divide-by-four term); fruit standing on the spawn of its own destroyed blender; a player with no blender standing.
+  - Those cases are covered by hand-derived tests, which are derivations from the Swift source and not Swift output. `movesToScore` returning null (no blender and no fruit on board) is covered by no test.
+  - Every one of the 13 weights changes at least one golden sample's score; a permanent test asserts this.
+  - `Evaluation` is `internal`, like Swift's.
+- **Review fixes applied:** Added hand-pinned tests for the three branches the golden data never reaches; simplified the loader. Oracle sanity-checked by mutating one weight.

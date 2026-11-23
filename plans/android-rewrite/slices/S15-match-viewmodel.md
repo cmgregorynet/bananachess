@@ -5,9 +5,9 @@ layer: ui
 points: 3
 depends_on: [S06, S13]
 touches: [Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/MatchViewModel.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/MatchUiState.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/EventTimeline.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/SquareDescription.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/BlendEffectPolicy.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/MatchHaptics.kt, Android/app/src/test/kotlin/com/charlesbarton/bananachess/match/]
-status: todo
-branch:
-started:
+status: in_progress
+branch: slice/android-rewrite/S15
+started: 2026-11-23T13:20
 completed:
 actual_points:
 review_fixes:
