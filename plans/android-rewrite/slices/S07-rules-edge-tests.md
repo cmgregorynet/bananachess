@@ -5,9 +5,9 @@ layer: test
 points: 3
 depends_on: [S06]
 touches: [Android/engine/src/test/kotlin/com/charlesbarton/bananachess/engine/rulesported/, Android/engine/src/test/kotlin/com/charlesbarton/bananachess/engine/support/BoardBuilder.kt]
-status: todo
-branch:
-started:
+status: in_progress
+branch: slice/android-rewrite/S07
+started: 2026-11-23T13:16
 completed:
 actual_points:
 review_fixes:

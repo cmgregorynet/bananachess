@@ -5,12 +5,12 @@ layer: ui
 points: 3
 depends_on: [S12]
 touches: [Android/app/src/main/kotlin/com/charlesbarton/bananachess/settings/, Android/app/src/main/kotlin/com/charlesbarton/bananachess/home/, Android/app/src/main/kotlin/com/charlesbarton/bananachess/BananaChessApp.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/MainActivity.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/MatchMode.kt, Android/app/src/test/kotlin/com/charlesbarton/bananachess/settings/, Android/app/src/test/kotlin/com/charlesbarton/bananachess/home/, Android/app/src/test/kotlin/com/charlesbarton/bananachess/ScaffoldTest.kt]
-status: in_progress
+status: done
 branch: slice/android-rewrite/S13
 started: 2026-11-23T13:11
-completed:
-actual_points:
-review_fixes:
+completed: 2026-11-23T13:20
+actual_points: 3
+review_fixes: experimental coroutine-test calls replaced; temp screenshot test removed
 blocked_reason:
 ---
 
@@ -78,7 +78,13 @@ cd .. && /usr/bin/grep -rni --include='*.kt' -E "game center|play online" Androi
 3: a screen, a store, a view model and the navigation shell. The four prior UI slices in the log landed on estimate (6 estimated, 6 actual).
 
 ## Actuals
-- **Actual points:**
-- **What took longer / shorter than expected:**
+- **Actual points:** 3. The estimate was 3.
+- **What took longer / shorter than expected:** The bottom sheet, type-safe navigation routes and real DataStore all worked under Robolectric first time. Deciding how DataStore stays one instance per file, and how the view model handles an edit made before the async load, took longer.
 - **Surprises / unknowns that surfaced:**
-- **Review fixes applied:**
+  - A fourth route, `Route.Invite`, exists as the "Invite by Link" placeholder. S21/S22 remove it.
+  - `MatchOptions` and `MatchStart` are defined in `:app` (`match/MatchMode.kt`).
+  - Settings load asynchronously, so Home shows defaults for a moment before stored values; a choice made before the load lands is kept.
+  - The match start is handed over through an activity-scoped `AppGraph.matchStart` holder, which is null after process death. S17 must handle that.
+  - `ScaffoldTest` asserts on the placeholder tags, so S14 and S17 update it when they replace the placeholders.
+  - Outside `touches`: `Android/app/src/test/kotlin/com/charlesbarton/bananachess/match/MatchModeTest.kt`.
+- **Review fixes applied:** Replaced experimental coroutine-test calls; wrapped the preview's view model in `remember`; removed a temporary screenshot test.

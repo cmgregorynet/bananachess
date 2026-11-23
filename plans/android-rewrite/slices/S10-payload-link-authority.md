@@ -5,9 +5,9 @@ layer: domain
 points: 3
 depends_on: [S06, S03]
 touches: [Android/engine/src/main/kotlin/com/charlesbarton/bananachess/engine/online/, Android/engine/src/test/kotlin/com/charlesbarton/bananachess/engine/online/]
-status: todo
-branch:
-started:
+status: in_progress
+branch: slice/android-rewrite/S10
+started: 2026-11-23T13:16
 completed:
 actual_points:
 review_fixes:
