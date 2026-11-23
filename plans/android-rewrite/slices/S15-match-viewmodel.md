@@ -5,12 +5,12 @@ layer: ui
 points: 3
 depends_on: [S06, S13]
 touches: [Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/MatchViewModel.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/MatchUiState.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/EventTimeline.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/SquareDescription.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/BlendEffectPolicy.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/MatchHaptics.kt, Android/app/src/test/kotlin/com/charlesbarton/bananachess/match/]
-status: in_progress
+status: done
 branch: slice/android-rewrite/S15
 started: 2026-11-23T13:20
-completed:
-actual_points:
-review_fixes:
+completed: 2026-11-23T13:31
+actual_points: 3
+review_fixes: timeline job launched lazily so pause cannot miss a re-entrant start
 blocked_reason:
 ---
 
@@ -81,7 +81,11 @@ cd Android && ./gradlew :app:testDebugUnitTest :app:lintDebug ktlintCheck :app:a
 3: the densest behaviour in the app, but pure state and coroutines on virtual time with no rendering. Prior domain slices ran slightly under estimate (9 estimated, 8 actual).
 
 ## Actuals
-- **Actual points:**
-- **What took longer / shorter than expected:**
+- **Actual points:** 3. The estimate was 3.
+- **What took longer / shorter than expected:** Everything compiled and passed first time; the engine API mapped one to one. Reading the later slices to decide what state lives where took the time.
 - **Surprises / unknowns that surfaced:**
-- **Review fixes applied:**
+  - Deliberate differences from iOS: the "Tropical Smoothie!" label reads blender positions before the event is applied (on iOS it always lands on row 0, column 0); taps are ignored while a self-blend prompt is open; events handed to a running timeline join the queue where iOS cancels and restarts; restart and undo also clear a pending self-blend.
+  - `Dispatchers.Main.immediate` appears once, as the default of the injected `scope` constructor parameter (the house pattern from `HomeViewModel`). No code body hops to it.
+  - Square descriptions include two iOS phrases the slice text did not list (smoothie-destroyed blender countdown; "knocks both blenders out").
+  - The timeline's fix for re-entrant starts on an immediate dispatcher is covered by reasoning and a standard-dispatcher test, not reproduced under an immediate dispatcher.
+- **Review fixes applied:** The timeline's job is now launched lazily, stored, then started, so a pause cannot miss a job started re-entrantly.

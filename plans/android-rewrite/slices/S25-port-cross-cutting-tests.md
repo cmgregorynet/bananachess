@@ -5,9 +5,9 @@ layer: test
 points: 1
 depends_on: [S07, S09, S10]
 touches: [Android/engine/src/test/kotlin/com/charlesbarton/bananachess/engine/rulesported/CrossCuttingPortedTests.kt, Android/engine/src/test/kotlin/com/charlesbarton/bananachess/engine/rulesported/BlenderamaDefenceTests.kt]
-status: todo
-branch:
-started:
+status: in_progress
+branch: slice/android-rewrite/S25
+started: 2026-11-23T13:30
 completed:
 actual_points:
 review_fixes:
