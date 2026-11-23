@@ -5,12 +5,12 @@ layer: test
 points: 1
 depends_on: [S07, S09, S10]
 touches: [Android/engine/src/test/kotlin/com/charlesbarton/bananachess/engine/rulesported/CrossCuttingPortedTests.kt, Android/engine/src/test/kotlin/com/charlesbarton/bananachess/engine/rulesported/BlenderamaDefenceTests.kt]
-status: in_progress
+status: done
 branch: slice/android-rewrite/S25
 started: 2026-11-23T13:30
-completed:
-actual_points:
-review_fixes:
+completed: 2026-11-23T13:33
+actual_points: 1
+review_fixes: none
 blocked_reason:
 ---
 
@@ -73,7 +73,10 @@ cd .. && git diff --stat plan/android-rewrite...HEAD -- Android/engine/src/main 
 1: ten tests against code that already exists, with the builder and helpers in place.
 
 ## Actuals
-- **Actual points:**
-- **What took longer / shorter than expected:**
+- **Actual points:** 1. The estimate was 1.
+- **What took longer / shorter than expected:** Nothing. All ten passed on the first run.
 - **Surprises / unknowns that surfaced:**
-- **Review fixes applied:**
+  - Six tests ported as-is; four CPU-driven ones adapted by dropping Swift's wall-clock time limits in favour of seeded players and a turn-number limit.
+  - `eventReplayHoldsAcrossAMatch` gives the Medium CPU a never-expiring clock, so it always searches its full depth, where Swift's is cut off by the real clock.
+  - None disabled; production code untouched. The engine suite runs in about 19 s.
+- **Review fixes applied:** none.

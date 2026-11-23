@@ -5,9 +5,9 @@ layer: ui
 points: 3
 depends_on: [S15, S12]
 touches: [Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/BoardView.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/SquareView.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/DestroyedBlenderMarker.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/FlashPill.kt, Android/app/src/test/kotlin/com/charlesbarton/bananachess/match/BoardViewTest.kt]
-status: todo
-branch:
-started:
+status: in_progress
+branch: slice/android-rewrite/S16
+started: 2026-11-23T13:31
 completed:
 actual_points:
 review_fixes:
