@@ -1,9 +1,9 @@
 ---
 slug: android-rewrite
 title: Banana Chess for Android (native Kotlin rewrite)
-status: draft
+status: approved
 created: 2026-11-23
-approved:
+approved: 2026-11-23T12:45
 base_branch: main
 feature_branch: plan/android-rewrite
 max_parallel: 5
