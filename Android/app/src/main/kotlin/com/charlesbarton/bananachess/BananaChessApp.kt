@@ -33,6 +33,7 @@ import com.charlesbarton.bananachess.art.PaperButton
 import com.charlesbarton.bananachess.home.HomeScreen
 import com.charlesbarton.bananachess.home.HomeViewModel
 import com.charlesbarton.bananachess.match.MatchStart
+import com.charlesbarton.bananachess.rules.RulesScreen
 import com.charlesbarton.bananachess.settings.DataStoreSettingsStore
 import com.charlesbarton.bananachess.settings.SettingsStore
 import kotlinx.serialization.Serializable
@@ -110,12 +111,8 @@ fun BananaChessApp(
             )
         }
         composable<Route.Rules> {
-            PlaceholderScreen(
-                title = "How to play",
-                detail = "The rules are on their way.",
-                tag = PlaceholderTags.RULES,
-                onBack = navController::popBackStack,
-            )
+            // Pops Rules by name, so a second press of "Done" during the way out cannot pop Home too.
+            RulesScreen(onDone = { navController.popBackStack(Route.Rules, inclusive = true) })
         }
         composable<Route.Invite> {
             PlaceholderScreen(
@@ -131,7 +128,6 @@ fun BananaChessApp(
 /** Test tags of the stand-in screens. Each goes away with the screen it stands in for. */
 object PlaceholderTags {
     const val MATCH = "matchPlaceholder"
-    const val RULES = "rulesPlaceholder"
     const val INVITE = "invitePlaceholder"
 }
 

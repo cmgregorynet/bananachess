@@ -49,10 +49,18 @@ class ScaffoldTest {
     }
 
     @Test
-    fun `how to play opens the rules route`() {
+    fun `how to play opens the rules, and done returns`() {
         composeRule.onNodeWithText("How to play").performScrollTo().performClick()
 
-        composeRule.onNodeWithTag(PlaceholderTags.RULES).assertIsDisplayed()
+        composeRule.onNodeWithText("The turn").assertIsDisplayed()
+        composeRule.onNodeWithText("Local Two Player").assertDoesNotExist()
+
+        composeRule.onNodeWithText("Done").performClick()
+
+        composeRule.onNodeWithText("The turn").assertDoesNotExist()
+        // Home comes back where it was left: scrolled down to the button that opened the rules.
+        composeRule.onNodeWithText("Local Two Player").assertExists()
+        composeRule.onNodeWithText("How to play").assertIsDisplayed()
     }
 
     @Test
