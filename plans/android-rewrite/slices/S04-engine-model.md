@@ -5,12 +5,12 @@ layer: domain
 points: 3
 depends_on: [S01]
 touches: [Android/engine/src/main/kotlin/com/charlesbarton/bananachess/engine/model/, Android/engine/src/main/kotlin/com/charlesbarton/bananachess/engine/setup/, Android/engine/src/main/kotlin/com/charlesbarton/bananachess/engine/random/, Android/engine/src/main/kotlin/com/charlesbarton/bananachess/engine/cpu/CpuDifficulty.kt, Android/engine/src/main/kotlin/com/charlesbarton/bananachess/engine/EngineInfo.kt, Android/engine/src/test/kotlin/com/charlesbarton/bananachess/engine/EngineInfoTest.kt, Android/engine/src/test/kotlin/com/charlesbarton/bananachess/engine/model/, Android/engine/src/test/kotlin/com/charlesbarton/bananachess/engine/setup/, Android/engine/src/test/kotlin/com/charlesbarton/bananachess/engine/random/, Android/engine/src/test/kotlin/com/charlesbarton/bananachess/engine/support/]
-status: in_progress
+status: done
 branch: slice/android-rewrite/S04
 started: 2026-11-23T12:54
-completed:
-actual_points:
-review_fixes:
+completed: 2026-11-23T13:03
+actual_points: 3
+review_fixes: nullable fixture outcome; deterministic test; squashed non-compiling commit
 blocked_reason:
 ---
 
@@ -85,7 +85,12 @@ cd .. && /usr/bin/grep -rn --include='*.kt' -E "^import (android|androidx)\." An
 3: about 1,000 lines of straightforward types plus four exact algorithms, with the TypeScript port as a worked reference and 108 openings as the oracle.
 
 ## Actuals
-- **Actual points:**
-- **What took longer / shorter than expected:**
+- **Actual points:** 3. The estimate was 3.
+- **What took longer / shorter than expected:** The four exact algorithms matched their oracles on the first run. Most of the time went on reading the Swift sources and shaping an immutable `GameState`.
 - **Surprises / unknowns that surfaced:**
-- **Review fixes applied:**
+  - The fixture's `outcome` is absent on 55 of 108 games (those that hit the recorder's 150-step cap), so it is nullable in the loader.
+  - S03's golden file was already on the branch, so `boardKey` and `positionKey` were checked against Swift directly: all 146 samples match.
+  - No Swift data has a non-null `respawnTurn`; that key input is covered only by local unit tests.
+  - Kotlin naming follows Kotlin convention (`PieceId`, `PlayerId.One`, `Board.SIZE`); a `Move` is itself a `GameAction` with no wrapper case; enum `toString` is not the raw value (use `.rawValue`).
+  - `GameState`'s data-class `copy` is private; updates go through `updated(…)` and internal piece updaters.
+- **Review fixes applied:** Made the fixture outcome nullable; made one test deterministic; hoisted a `Json` instance; squashed two commits because the first did not compile alone.
