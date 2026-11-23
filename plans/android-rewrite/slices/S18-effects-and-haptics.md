@@ -28,6 +28,7 @@ The juice: fruit bursts into droplets, sometimes splatters the screen, and the p
 - **Reduced motion** (system animator duration scale = 0): no droplet travel (a brief tint fade instead), calm piece transitions (scale 0.7 + fade), no splatter spring.
 - **Haptics** (`Haptics.swift`), through `View.performHapticFeedback` constants so no vibrate permission is needed, honouring the system haptic setting: selection → a light tick; moved → light; blenderBattle → heavy; blenderDestroyed / smoothie → a firm reject-style tap; restored / bananaReturned → soft; blended → medium; delivered / smoothiePoured / gameEnded → a confirm pattern. Choose the closest available constant for the device's API level and fall back gracefully on API 26.
 - There is no sound in this game.
+- **Established by S12:** `Modifier.clip(shape)` and `graphicsLayer { clip = true }` each add a semantics node in this Compose version. Anything that must stay out of the accessibility tree clips in the draw phase instead (see the tray in `art/PieceArtwork.kt`). `PieceArtwork(kind, seat, modifier, isGolden, showsTray)` takes named arguments, needs a bounded size, and its golden halo draws outside its bounds. `isReducedMotion(context)` lives in `art/PieceArtwork.kt`.
 
 ### Toolchain facts established by S01 (read before writing code)
 - Versions are pinned in `Android/gradle/libs.versions.toml`: Gradle 9.9.2, AGP 9.5.2 (built-in Kotlin, so `:app` has no `kotlin-android` plugin), Kotlin 2.4.21, compileSdk 37.2, targetSdk 37, minSdk 26, Compose BOM 2026.11.01.

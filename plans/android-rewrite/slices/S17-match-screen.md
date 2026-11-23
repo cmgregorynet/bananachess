@@ -32,6 +32,7 @@ A complete local match on a phone: start from Home, play, see the result, play a
 - **Error surface**: `MatchUiState.errorMessage` shows as a dismissible banner under the turn indicator in every match state (playing, resolving, finished). It never blocks the board.
 - Replace the Match placeholder route in `BananaChessApp.kt`: Home's "Local Two Player" starts a `LocalVersus` match built from the current options.
 - Large font sizes: the scoreboards and controls wrap or scroll; the board keeps its size.
+- **Established by S12:** `Modifier.clip(shape)` and `graphicsLayer { clip = true }` each add a semantics node in this Compose version. Anything that must stay out of the accessibility tree clips in the draw phase instead (see the tray in `art/PieceArtwork.kt`). `PieceArtwork(kind, seat, modifier, isGolden, showsTray)` takes named arguments, needs a bounded size, and its golden halo draws outside its bounds. `isReducedMotion(context)` lives in `art/PieceArtwork.kt`.
 
 ### Toolchain facts established by S01 (read before writing code)
 - Versions are pinned in `Android/gradle/libs.versions.toml`: Gradle 9.9.2, AGP 9.5.2 (built-in Kotlin, so `:app` has no `kotlin-android` plugin), Kotlin 2.4.21, compileSdk 37.2, targetSdk 37, minSdk 26, Compose BOM 2026.11.01.

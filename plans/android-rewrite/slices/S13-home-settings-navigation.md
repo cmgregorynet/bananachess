@@ -30,6 +30,7 @@ The start screen with every game option, remembered between launches, and the na
 - `MatchMode` (sealed): `LocalVersus`, `Computer(difficulty, humanPlays)`, `ByLink(matchID, localPlayer)`, with the display names from `MatchMode.swift` ("Player One"/"Player Two"; "You"/"<Difficulty> CPU"; "You"/"Your opponent") and `bottomPlayer`.
 - **Navigation**: Navigation Compose in `BananaChessApp.kt` with routes Home, Match and Rules. Match and Rules are placeholder screens here; S14 and S17 replace them. Pass match start parameters through a small in-memory holder owned by the activity-scoped graph, not through route strings.
 - Accessibility: each menu button reads "<title>. <detail>"; checkboxes expose role, state and the detail as a description; picker buttons expose selected state.
+- **Established by S12:** `Modifier.clip(shape)` and `graphicsLayer { clip = true }` each add a semantics node in this Compose version. Anything that must stay out of the accessibility tree clips in the draw phase instead (see the tray in `art/PieceArtwork.kt`). `PieceArtwork(kind, seat, modifier, isGolden, showsTray)` takes named arguments, needs a bounded size, and its golden halo draws outside its bounds. `isReducedMotion(context)` lives in `art/PieceArtwork.kt`.
 
 ### Toolchain facts established by S01 (read before writing code)
 - Versions are pinned in `Android/gradle/libs.versions.toml`: Gradle 9.9.2, AGP 9.5.2 (built-in Kotlin, so `:app` has no `kotlin-android` plugin), Kotlin 2.4.21, compileSdk 37.2, targetSdk 37, minSdk 26, Compose BOM 2026.11.01.

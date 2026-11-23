@@ -27,6 +27,7 @@ blocked_reason:
 - The overlay does not teach the self-blend tactic (`RulesView.swift:145-146`).
 - `SettingsStore.hasSeenTeachingOverlay` (S13) records that it has been shown. This slice builds the overlay composable and its state holder; S17 places it on the Match screen.
 - Replace the Rules placeholder route in `BananaChessApp.kt`.
+- **Established by S12:** `Modifier.clip(shape)` and `graphicsLayer { clip = true }` each add a semantics node in this Compose version. Anything that must stay out of the accessibility tree clips in the draw phase instead (see the tray in `art/PieceArtwork.kt`). `PieceArtwork(kind, seat, modifier, isGolden, showsTray)` takes named arguments, needs a bounded size, and its golden halo draws outside its bounds. `isReducedMotion(context)` lives in `art/PieceArtwork.kt`.
 
 ### Toolchain facts established by S01 (read before writing code)
 - Versions are pinned in `Android/gradle/libs.versions.toml`: Gradle 9.9.2, AGP 9.5.2 (built-in Kotlin, so `:app` has no `kotlin-android` plugin), Kotlin 2.4.21, compileSdk 37.2, targetSdk 37, minSdk 26, Compose BOM 2026.11.01.

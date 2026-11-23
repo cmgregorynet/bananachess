@@ -29,6 +29,7 @@ The 6×6 board: squares, pieces that travel between them, legal-move dots, wrap 
 - **DestroyedBlenderMarker** (`:264-304`), 0.82 of the cell: tray tint 0.28 circle, greyscale ghost blender (alpha 0.4 if purchasable, else 0.28), dashed ring (amber if purchasable), and either a "−3" pill (purchasable) or a countdown number.
 - **Flash pill** (`:222-242`): small serif semibold text in a cream capsule with a 1.5 dp amber border, offset (+0.5 cell, −0.15 cell) from its square, fading in with an 8 dp rise.
 - **Rotation** (`:248-259`): when `isRotated`, the board is drawn turned 180° so the local player's pieces are at the bottom; piece drawings and text stay upright.
+- **Established by S12:** `Modifier.clip(shape)` and `graphicsLayer { clip = true }` each add a semantics node in this Compose version. Anything that must stay out of the accessibility tree clips in the draw phase instead (see the tray in `art/PieceArtwork.kt`). `PieceArtwork(kind, seat, modifier, isGolden, showsTray)` takes named arguments, needs a bounded size, and its golden halo draws outside its bounds. `isReducedMotion(context)` lives in `art/PieceArtwork.kt`.
 
 ### Toolchain facts established by S01 (read before writing code)
 - Versions are pinned in `Android/gradle/libs.versions.toml`: Gradle 9.9.2, AGP 9.5.2 (built-in Kotlin, so `:app` has no `kotlin-android` plugin), Kotlin 2.4.21, compileSdk 37.2, targetSdk 37, minSdk 26, Compose BOM 2026.11.01.
