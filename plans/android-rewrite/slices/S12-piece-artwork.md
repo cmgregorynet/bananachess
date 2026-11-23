@@ -4,7 +4,7 @@ title: Draw the pieces: fruit, blenders, trays and the golden halo
 layer: ui
 points: 3
 depends_on: [S11, S04]
-touches: [Android/app/src/main/kotlin/com/charlesbarton/bananachess/art/PieceShapes.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/art/PieceArtwork.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/art/ArtCatalog.kt, Android/app/src/test/kotlin/com/charlesbarton/bananachess/art/PieceArtworkTest.kt]
+touches: [Android/app/src/main/kotlin/com/charlesbarton/bananachess/art/PieceShapes.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/art/PieceArtwork.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/art/ArtCatalog.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/art/Palette.kt, Android/app/src/test/kotlin/com/charlesbarton/bananachess/art/PieceArtworkTest.kt]
 status: todo
 branch:
 started:
@@ -29,6 +29,7 @@ Every piece drawn as vectors exactly as on iOS, with ownership readable without 
 - **Pieces** (`:122-212`): banana = wash + a sand 0.35 bruise; strawberry = wash + six cream 0.85 seed ellipses + sageLight calyx; pineapple = wash (amber when golden) + ink 0.28 crosshatch (0.8 width, step 0.16 × width) masked to the body + sage crown; blender = base (sand bottom seat / slate top) + jar (blenderGlass 0.9) + two blade strokes forming an X (ink 0.6, 1.6, round) + lid (driftwood bottom / fogWater top).
 - `ArtCatalog`: prefer a drawable named `piece_<kind>_<p1|p2>` when one exists, otherwise the vectors. None exist today; the lookup is the seam for future painted sprites.
 - Pieces are decorative: no semantics of their own (the square that holds them carries the label).
+- **What S11 built (read the files in `art/` before starting):** `Palette` already has `tray(seat)`, `trayShade(seat)` and `panelTint(seat)`, but not `wash(kind)` — add `Palette.wash(kind: PieceKind)` in `Palette.kt` here (banana, strawberry, pineapple washes; blenderGlass for the blender). `DrawScope.drawWatercolorWash(path, tint, …)` draws a wash for a path already in pixels. `Modifier.paperGrain(opacity)` does **not** clip; apply it after `clip(CircleShape)` for the tray. Pixel tests work under Robolectric with `@GraphicsMode(GraphicsMode.Mode.NATIVE)` and `captureToImage()`.
 
 ### Toolchain facts established by S01 (read before writing code)
 - Versions are pinned in `Android/gradle/libs.versions.toml`: Gradle 9.9.2, AGP 9.5.2 (built-in Kotlin, so `:app` has no `kotlin-android` plugin), Kotlin 2.4.21, compileSdk 37.2, targetSdk 37, minSdk 26, Compose BOM 2026.11.01.
