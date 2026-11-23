@@ -1,32 +1,26 @@
 package com.charlesbarton.bananachess
 
+import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
-import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
-import androidx.compose.material3.lightColorScheme
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.res.stringResource
+import androidx.activity.enableEdgeToEdge
+import androidx.activity.viewModels
+import com.charlesbarton.bananachess.art.PaperTheme
 
 class MainActivity : ComponentActivity() {
+    private val graph: AppGraph by viewModels { AppGraph.factory(applicationContext) }
+
     override fun onCreate(savedInstanceState: Bundle?) {
+        // The paper runs under the system bars. It is always light, so the bar icons are always dark.
+        val bars = SystemBarStyle.light(Color.TRANSPARENT, Color.TRANSPARENT)
+        enableEdgeToEdge(statusBarStyle = bars, navigationBarStyle = bars)
         super.onCreate(savedInstanceState)
         setContent {
-            MaterialTheme(colorScheme = lightColorScheme()) {
-                Placeholder()
+            PaperTheme {
+                BananaChessApp(graph = graph)
             }
         }
-    }
-}
-
-@Composable
-private fun Placeholder() {
-    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-        Text(text = stringResource(R.string.app_name))
     }
 }
