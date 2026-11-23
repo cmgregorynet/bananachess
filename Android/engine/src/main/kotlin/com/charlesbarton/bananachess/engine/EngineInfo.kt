@@ -1,6 +1,6 @@
 package com.charlesbarton.bananachess.engine
 
-/** Identifies the engine module. Game code arrives in later slices. */
+/** Identifies the engine module. */
 object EngineInfo {
     const val NAME: String = "BananaChessEngine"
 }
