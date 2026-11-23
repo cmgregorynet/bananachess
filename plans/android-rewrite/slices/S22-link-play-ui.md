@@ -29,6 +29,15 @@ Tapping a Banana Chess link opens the match, and sending your move is one button
   - If no app can handle the share intent (`ActivityNotFoundException`), the Match screen shows its existing error banner: "Couldn't open the share sheet. The link was copied instead." and the link is copied to the clipboard.
 - Links are long (about 700–2,700 characters); do not display the raw link in the UI.
 
+### Toolchain facts established by S01 (read before writing code)
+- Versions are pinned in `Android/gradle/libs.versions.toml`: Gradle 9.9.2, AGP 9.5.2 (built-in Kotlin, so `:app` has no `kotlin-android` plugin), Kotlin 2.4.21, compileSdk 37.2, targetSdk 37, minSdk 26, Compose BOM 2026.11.01.
+- `:engine` tests use JUnit Jupiter 6 with `kotlin.test`. `:app` tests use JUnit 4 with Robolectric 4.18.1, which simulates **API 35** (`Android/app/src/test/resources/robolectric.properties`).
+- Compose UI tests use the **v2** rule: `androidx.compose.ui.test.junit4.v2.createAndroidComposeRule` (v1 is deprecated and warns).
+- ktlint uses the `ktlint_official` style: in `.kt` files a chain of four or more calls is wrapped one call per line; `@Composable` functions are exempt from function naming. Run `./gradlew ktlintFormat` before checking.
+- Lint treats warnings as errors.
+- The build cache is on. To be sure tests really ran, add `--no-build-cache --rerun-tasks` to the Verification command at least once before reporting.
+- Machine: `platforms;android-37.0`, `platforms;android-37.2`, `build-tools;37.0.0` and `platform-tools` are installed. Do not install or remove SDK packages.
+
 ### Common context (the same in every slice of this plan)
 - Read `plans/android-rewrite/RESEARCH.md` first. It maps the existing code and lists the exactness rules.
 - This repo holds one game three times: the Swift engine in `Engine/` (**the specification**), the iOS app in `App/`, and a TypeScript port in `Web/src/engine/` (a useful second reference that already passes the fixture). This plan adds a fourth: a native Android app in `Android/`.

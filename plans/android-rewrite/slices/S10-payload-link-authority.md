@@ -32,6 +32,15 @@ Read and write the exact link format iOS uses, so an Android phone and an iPhone
 - **Observed in S03's golden data (facts, not inference):** the link blob is raw DEFLATE; payload JSON is compact with sorted keys; top-level keys are `lastMove` (omitted at move 0), `matchID`, `moveNumber`, `rulesVersion`, `schemaVersion`, `state`; piece keys are `home`, `id`, `kind`, `owner`, `position` (no `position` key when off-board; `respawnTurn` never appears); `restoreBlender` is `{"at","pieceID"}` with no `_0`; `gameEnded` is `{"outcome":{…}}`; `blenderBattle` mixes `_0` and `at`; `boardHistory` holds values above `Long.MAX_VALUE`. The golden file itself contains raw UTF-8 (`→`) and stores each `payloadJSON` as a string.
 - **Not pinned by the golden data**, so implement from Swift's synthesized-Codable rules and cover with round-trip tests of your own: `blenderRespawned`, `smoothie`, `turnPassed`, a `draw` outcome, win reasons `bananaSplit` and `blenderama`, a non-nil `respawnTurn`, and `\/` escaping (test with a match id containing `/`).
 
+### Toolchain facts established by S01 (read before writing code)
+- Versions are pinned in `Android/gradle/libs.versions.toml`: Gradle 9.9.2, AGP 9.5.2 (built-in Kotlin, so `:app` has no `kotlin-android` plugin), Kotlin 2.4.21, compileSdk 37.2, targetSdk 37, minSdk 26, Compose BOM 2026.11.01.
+- `:engine` tests use JUnit Jupiter 6 with `kotlin.test`. `:app` tests use JUnit 4 with Robolectric 4.18.1, which simulates **API 35** (`Android/app/src/test/resources/robolectric.properties`).
+- Compose UI tests use the **v2** rule: `androidx.compose.ui.test.junit4.v2.createAndroidComposeRule` (v1 is deprecated and warns).
+- ktlint uses the `ktlint_official` style: in `.kt` files a chain of four or more calls is wrapped one call per line; `@Composable` functions are exempt from function naming. Run `./gradlew ktlintFormat` before checking.
+- Lint treats warnings as errors.
+- The build cache is on. To be sure tests really ran, add `--no-build-cache --rerun-tasks` to the Verification command at least once before reporting.
+- Machine: `platforms;android-37.0`, `platforms;android-37.2`, `build-tools;37.0.0` and `platform-tools` are installed. Do not install or remove SDK packages.
+
 ### Common context (the same in every slice of this plan)
 - Read `plans/android-rewrite/RESEARCH.md` first. It maps the existing code and lists the exactness rules.
 - This repo holds one game three times: the Swift engine in `Engine/` (**the specification**), the iOS app in `App/`, and a TypeScript port in `Web/src/engine/` (a useful second reference that already passes the fixture). This plan adds a fourth: a native Android app in `Android/`.

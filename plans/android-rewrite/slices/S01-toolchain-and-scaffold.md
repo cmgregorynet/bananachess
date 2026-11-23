@@ -5,12 +5,12 @@ layer: infra
 points: 3
 depends_on: []
 touches: [Android/settings.gradle.kts, Android/build.gradle.kts, Android/gradle.properties, Android/gradle/, Android/gradlew, Android/gradlew.bat, Android/scripts/, Android/.gitignore, Android/.editorconfig, Android/engine/build.gradle.kts, Android/engine/src/main/kotlin/com/charlesbarton/bananachess/engine/EngineInfo.kt, Android/engine/src/test/kotlin/com/charlesbarton/bananachess/engine/EngineInfoTest.kt, Android/app/build.gradle.kts, Android/app/proguard-rules.pro, Android/app/src/main/AndroidManifest.xml, Android/app/src/main/res/, Android/app/src/main/kotlin/com/charlesbarton/bananachess/MainActivity.kt, Android/app/src/test/kotlin/com/charlesbarton/bananachess/ScaffoldTest.kt, Android/README.md]
-status: in_progress
+status: done
 branch: slice/android-rewrite/S01
 started: 2026-11-23T12:46
-completed:
-actual_points:
-review_fixes:
+completed: 2026-11-23T12:54
+actual_points: 3
+review_fixes: v2 compose rule; catalog comment; installed API 37.0 platform for lint
 blocked_reason:
 ---
 
@@ -75,7 +75,14 @@ cd .. && git diff --stat plan/android-rewrite...HEAD -- . ':!Android' | /usr/bin
 3: nothing is installed, versions must be looked up fresh, and Robolectric plus Compose plus lint-as-errors has to work first time. The two prior infra slices in the estimation log came in under estimate (5 estimated, 3 actual), but both were Xcode projects on a machine that already had the toolchain.
 
 ## Actuals
-- **Actual points:**
-- **What took longer / shorter than expected:**
+- **Actual points:** 3. The estimate was 3.
+- **What took longer / shorter than expected:** Installs and the first build were quick (no password prompts). The time went on three compatibility snags: Compose needing compileSdk 37.1 or later, Robolectric needing Java 21 for API 36 and above, and lint-as-errors on the portrait lock, missing icon and backup attribute.
 - **Surprises / unknowns that surfaced:**
+  - Pinned: Gradle 9.9.2, AGP 9.5.2, Kotlin 2.4.21, compileSdk 37.2, targetSdk 37, minSdk 26, Compose BOM 2026.11.01, Robolectric 4.18.1, JUnit Jupiter 6.1.3, ktlint 1.8.0.
+  - Robolectric simulates API 35 (`app/src/test/resources/robolectric.properties`), because API 36 and above need Java 21 and JDK 17 was the approved install.
+  - AGP 9 has built-in Kotlin; `:app` applies no `kotlin-android` plugin.
+  - `brew install gradle` pulled in Homebrew's openjdk 27 as a dependency. Both are unused after the wrapper was generated.
+  - Outside `touches`: `Android/app/src/test/resources/robolectric.properties`.
 - **Review fixes applied:**
+  - Worker: moved the scaffold test to the v2 Compose test rule; corrected a catalog comment; confirmed ktlint really checks `:app`.
+  - Orchestrator, after merge: lint logged a stack trace for a missing `platforms;android-37.0` on every run. Installed that platform and added it to the README.
