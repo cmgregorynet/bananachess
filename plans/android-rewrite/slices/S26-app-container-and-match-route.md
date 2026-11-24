@@ -5,12 +5,12 @@ layer: infra
 points: 2
 depends_on: [S18]
 touches: [Android/app/src/main/kotlin/com/charlesbarton/bananachess/BananaChessApplication.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/AppContainer.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/BananaChessApp.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/MainActivity.kt, Android/app/src/main/AndroidManifest.xml, Android/app/src/main/kotlin/com/charlesbarton/bananachess/settings/SettingsStore.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/home/, Android/app/src/test/kotlin/com/charlesbarton/bananachess/ScaffoldTest.kt, Android/app/src/test/kotlin/com/charlesbarton/bananachess/AppContainerTest.kt, Android/app/src/test/kotlin/com/charlesbarton/bananachess/match/MatchScreenTest.kt, Android/app/src/test/kotlin/com/charlesbarton/bananachess/home/]
-status: todo
-branch:
-started:
-completed:
-actual_points:
-review_fixes:
+status: done
+branch: slice/android-rewrite/S26
+started: 2026-11-23T17:26
+completed: 2026-11-23T17:54
+actual_points: 3
+review_fixes: container closes its IO scope (fixed suite deadlock); no defaults in saved route
 blocked_reason:
 ---
 
@@ -73,7 +73,13 @@ cd .. && /usr/bin/grep -rn --include='*.kt' -E 'MatchStartHolder|AppGraph' Andro
 2: a known pattern (route arguments, an Application container) touching navigation, Home and their tests.
 
 ## Actuals
-- **Actual points:**
-- **What took longer / shorter than expected:**
+- **Actual points:** 3. The estimate was 2.
+- **What took longer / shorter than expected:** Longer: an order-dependent deadlock in the full test suite (a settings write hung for over 18 minutes, only when run after other test classes). Robolectric makes a new `Application` per test, and the previous DataStore's IO scope never ended; the old static per-file map had been masking it. The route change and custom navigation type worked first time.
 - **Surprises / unknowns that surfaced:**
-- **Review fixes applied:**
+  - `AppContainer` owns its IO scope and has `close()`; the `Application` closes it in `onTerminate`, which devices never call and Robolectric calls after each test.
+  - `MatchSource.New` carries every field (including the seed) with no defaults, so a later default change cannot alter a saved match. A mutation check (ignoring the seed) made the Random process-death test fail.
+  - Process death is simulated by saving the navigation state through a real `Parcel` and rebuilding the app with a fresh container and view-model store.
+  - After process death a new match deals its opening again; moves in progress are lost until S20.
+  - Snapshot loading is asynchronous, so S20 will likely turn the synchronous route resolution into a loading state.
+  - Outside `touches`: the new file `match/MatchSource.kt`.
+- **Review fixes applied:** Container closes its IO scope (fixed the deadlock); no defaults on saved route fields; a lint fix in the test harness.
