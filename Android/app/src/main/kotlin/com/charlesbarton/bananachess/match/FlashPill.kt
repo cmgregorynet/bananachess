@@ -36,6 +36,19 @@ internal object FlashPillSpec {
     val verticalPadding = 4.dp
     val borderWidth = 1.5.dp
 
+    /**
+     * Where the pill's left edge rests. Beside its square by default, but a long label on the
+     * right-hand columns is shifted left until it ends at the board's edge: there is no room
+     * beyond it, only the edge of the screen. A label wider than the whole board starts at the
+     * board's left edge.
+     */
+    fun restingLeft(
+        displayedColumn: Int,
+        cell: Float,
+        pillWidth: Float,
+        boardWidth: Float,
+    ): Float = ((displayedColumn + OFFSET_X) * cell).coerceAtMost(boardWidth - pillWidth).coerceAtLeast(0f)
+
     // The iOS caption style in the platform serif.
     val textStyle =
         TextStyle(
@@ -52,8 +65,8 @@ internal object FlashPillSpec {
  * border, fading in as it rises into place and fading out the same way.
  *
  * Give it the board's own bounds; it works out the square from them. It is painted, not laid out
- * as text, so it adds nothing to the accessibility tree and never takes a tap. It may draw past
- * the board's edge, so nothing above it should clip.
+ * as text, so it adds nothing to the accessibility tree and never takes a tap. It stays inside
+ * the board's width but may draw above its top edge, so nothing above it should clip.
  */
 @Composable
 fun FlashPill(
@@ -90,7 +103,7 @@ fun FlashPill(
                     val square = current.position.displayed(isRotated)
                     val restingTopLeft =
                         Offset(
-                            x = (square.column + FlashPillSpec.OFFSET_X) * cell,
+                            x = FlashPillSpec.restingLeft(square.column, cell, pill.width, size.width),
                             y = (square.row + FlashPillSpec.OFFSET_Y) * cell,
                         )
                     onDrawBehind {

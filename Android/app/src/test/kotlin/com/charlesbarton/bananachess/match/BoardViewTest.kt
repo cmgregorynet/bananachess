@@ -49,6 +49,7 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
+import kotlin.test.assertNotEquals
 import kotlin.test.assertTrue
 
 @RunWith(RobolectricTestRunner::class)
@@ -98,7 +99,7 @@ class BoardViewTest {
     @Composable
     private fun Frame(content: @Composable () -> Unit) {
         PaperTheme {
-            // Room for the border and for a flash that reaches past the board's edge.
+            // Room for the border and for a flash that reaches above the board's edge.
             Box(modifier = Modifier.testTag(FRAME).padding(MARGIN)) { content() }
         }
     }
@@ -397,6 +398,45 @@ class BoardViewTest {
         val y = cell.top + cell.height * FlashPillSpec.OFFSET_Y + 3 * density
         assertTrue(y < cell.top)
         assertEquals(Palette.cream, Color(capture().getPixel(x.roundToInt(), y.roundToInt())))
+    }
+
+    @Test
+    fun `a long flash on the right-hand column is shifted left to end at the board's edge`() {
+        val battle = "Battle!  12 v 11  (rolled 6 and 5)"
+        // The top right square as each player sees it.
+        val cases = listOf(MatchMode.LocalVersus to square(0, 5), playerTwoAtTheBottom to square(5, 0))
+        for ((index, case) in cases.withIndex()) {
+            val (mode, position) = case
+            val ui = scope.matchViewModel(mode = mode).ui
+            show(ui.copy(flash = BoardFlash(id = index + 1L, text = battle, position = position)))
+            composeRule.waitForIdle()
+
+            val density = composeRule.density.density
+            val cell = bounds(position)
+            val image = capture()
+            // In the capsule's top padding, which is above the board, so the paper there is the pill's.
+            val y = (cell.top + cell.height * FlashPillSpec.OFFSET_Y + 3 * density).roundToInt()
+            assertTrue(y < cell.top)
+            val justInside = Color(image.getPixel((cell.right - 14 * density).roundToInt(), y))
+            val justOutside = Color(image.getPixel((cell.right + 10 * density).roundToInt(), y))
+            assertEquals(Palette.cream, justInside, "the pill does not reach the board's right edge for $mode")
+            assertNotEquals(Palette.cream, justOutside, "the pill runs past the board's right edge for $mode")
+        }
+    }
+
+    @Test
+    fun `a flash rests beside its square unless that would take it past the board`() {
+        val cell = 60f
+        val board = 360f
+
+        // Room to spare: half a square in from the square's left edge, as on iOS.
+        assertEquals(30f, FlashPillSpec.restingLeft(displayedColumn = 0, cell, pillWidth = 200f, boardWidth = board))
+        assertEquals(150f, FlashPillSpec.restingLeft(displayedColumn = 2, cell, pillWidth = 200f, boardWidth = board))
+        // No room: it ends at the board's right edge.
+        assertEquals(160f, FlashPillSpec.restingLeft(displayedColumn = 3, cell, pillWidth = 200f, boardWidth = board))
+        assertEquals(160f, FlashPillSpec.restingLeft(displayedColumn = 5, cell, pillWidth = 200f, boardWidth = board))
+        // Wider than the board: it starts at the left edge.
+        assertEquals(0f, FlashPillSpec.restingLeft(displayedColumn = 5, cell, pillWidth = 400f, boardWidth = board))
     }
 
     @Test
