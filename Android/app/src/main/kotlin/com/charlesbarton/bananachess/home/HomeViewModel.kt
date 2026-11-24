@@ -6,7 +6,9 @@ import com.charlesbarton.bananachess.engine.model.BoardSetup
 import com.charlesbarton.bananachess.engine.model.BoardWrap
 import com.charlesbarton.bananachess.engine.model.PlayerId
 import com.charlesbarton.bananachess.engine.model.RuleSet
+import com.charlesbarton.bananachess.match.MatchMode
 import com.charlesbarton.bananachess.match.MatchOptions
+import com.charlesbarton.bananachess.match.MatchSnapshotStore
 import com.charlesbarton.bananachess.match.MatchSource
 import com.charlesbarton.bananachess.settings.Settings
 import com.charlesbarton.bananachess.settings.SettingsStore
@@ -22,7 +24,10 @@ import kotlinx.coroutines.launch
 import kotlin.random.Random
 import kotlin.random.nextULong
 
-/** What the start screen shows: the six choices that are remembered between launches. */
+/**
+ * What the start screen shows: the six choices that are remembered between launches, and the
+ * match there is to resume, if any.
+ */
 data class HomeUiState(
     val difficulty: CpuDifficulty = CpuDifficulty.Medium,
     val humanPlaysFirst: Boolean = true,
@@ -30,16 +35,35 @@ data class HomeUiState(
     val boardSetup: BoardSetup = BoardSetup.Standard,
     val boardWrap: BoardWrap = BoardWrap.Flat,
     val blenderBattles: Boolean = false,
+    val resume: ResumeOffer? = null,
 )
+
+/** The saved match Home offers to carry on with. [detail] says who it is against. */
+data class ResumeOffer(
+    val detail: String,
+) {
+    companion object {
+        fun of(mode: MatchMode): ResumeOffer =
+            ResumeOffer(
+                when (mode) {
+                    MatchMode.LocalVersus -> "Local two player"
+                    is MatchMode.Computer -> "${mode.difficulty.displayName} CPU"
+                    is MatchMode.ByLink -> "By link"
+                },
+            )
+    }
+}
 
 /**
  * @param seeds picks the seed a new match is dealt from. It is carried with the match, so a
  *   Random board can be dealt again identically after the process is restarted.
+ * @param snapshots where the match to resume is looked for, each time Home is shown.
  */
 class HomeViewModel(
     private val settings: SettingsStore,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
     private val seeds: () -> ULong = { Random.nextULong() },
+    private val snapshots: MatchSnapshotStore = MatchSnapshotStore.None,
 ) : ViewModel(scope) {
     private val mutableState = MutableStateFlow(HomeUiState())
     val state: StateFlow<HomeUiState> = mutableState.asStateFlow()
@@ -50,8 +74,19 @@ class HomeViewModel(
     private val loading =
         scope.launch {
             val stored = settings.settings.first()
-            if (!hasEdited) mutableState.value = stored.toUiState()
+            if (!hasEdited) mutableState.update { stored.toUiState().copy(resume = it.resume) }
         }
+
+    /**
+     * Looks again for a match to resume. Called whenever Home comes into view, because the
+     * match that was just left may have been saved, finished or replaced since Home last looked.
+     */
+    fun refreshResume() {
+        scope.launch {
+            val offer = snapshots.load()?.let { ResumeOffer.of(it.mode) }
+            mutableState.update { it.copy(resume = offer) }
+        }
+    }
 
     val options: MatchOptions
         get() =

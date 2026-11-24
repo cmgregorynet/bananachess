@@ -13,6 +13,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -50,6 +51,8 @@ fun HomeScreen(
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     var isShowingCpuOptions by rememberSaveable { mutableStateOf(false) }
+    // Each time Home is shown, including on the way back from a match.
+    LaunchedEffect(viewModel) { viewModel.refreshResume() }
 
     PaperBackground(modifier = modifier) {
         // Scrolls, because it has to: the menu, two board choices and two rules opt-ins do not
@@ -68,6 +71,7 @@ fun HomeScreen(
             Menu(
                 state = state,
                 onPlayLocal = { onStartMatch(viewModel.startLocal()) },
+                onResume = { onStartMatch(MatchSource.Saved) },
                 onPlayComputer = { isShowingCpuOptions = true },
                 onInvite = onInvite,
             )
@@ -140,15 +144,21 @@ private fun Title(modifier: Modifier = Modifier) {
 private fun Menu(
     state: HomeUiState,
     onPlayLocal: () -> Unit,
+    onResume: () -> Unit,
     onPlayComputer: () -> Unit,
     onInvite: () -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+        // Above everything else, and the one that stands out while it is there: a match left
+        // part-way is the likeliest thing to come back for.
+        state.resume?.let { resume ->
+            MenuButton(title = "Resume match", detail = resume.detail, onClick = onResume, isPrimary = true)
+        }
         MenuButton(
             title = "Local Two Player",
             detail = "Share one phone and take turns.",
             onClick = onPlayLocal,
-            isPrimary = true,
+            isPrimary = state.resume == null,
         )
         MenuButton(
             title = "Play Computer",

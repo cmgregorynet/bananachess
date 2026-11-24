@@ -53,6 +53,8 @@ import kotlin.math.abs
  * @param cpuDispatcher where the computer's search runs. Never [scope]'s thread: a search can
  *   take seconds.
  * @param cpuOpponent makes the computer player for a [MatchMode.Computer] match, once.
+ * @param snapshots keeps this match for resuming: replaced when the match opens and after every
+ *   move, restart and undo, and cleared once it is over.
  */
 class MatchViewModel(
     mode: MatchMode,
@@ -64,6 +66,7 @@ class MatchViewModel(
     scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
     private val cpuDispatcher: CoroutineDispatcher = Dispatchers.Default,
     cpuOpponent: (CpuDifficulty) -> CpuOpponent = CpuOpponent::forDifficulty,
+    private val snapshots: MatchSnapshotStore = MatchSnapshotStore.None,
 ) : ViewModel(scope) {
     private val mutableState =
         MutableStateFlow(MatchUiState(mode = mode, displayState = initialState, authoritativeState = initialState))
@@ -92,7 +95,10 @@ class MatchViewModel(
             val hasSeen = settings.settings.first().hasSeenTeachingOverlay
             if (!hasSeen) change { copy(isTeachingOverlayShowing = true) }
         }
-        // When the human plays second, the computer opens.
+        // Any match that opens is now the one to resume, replacing whatever was saved before.
+        persist()
+        // When the human plays second, the computer opens. A resumed match whose turn
+        // belongs to the computer carries on the same way.
         startCpuTurnIfNeeded()
     }
 
@@ -237,7 +243,18 @@ class MatchViewModel(
             }
         undoStack.addLast(before)
         change { copy(authoritativeState = transition.state, hasUndoHistory = true) }
+        // Saved as soon as the rules have decided it rather than once it has played out: a
+        // player who leaves mid-animation, or a computer that answers while the app is in the
+        // background, would otherwise come back to a match missing its last move.
+        persist()
         animate(transition.events)
+    }
+
+    /** Saves the match as it stands, or forgets it once it is over: a finished match has nothing to resume. */
+    private fun persist() {
+        val current = state.value
+        val match = current.authoritativeState
+        if (match.status.isOver) snapshots.clear() else snapshots.save(MatchSnapshot(current.mode, match))
     }
 
     /**
@@ -493,6 +510,7 @@ class MatchViewModel(
                 errorMessage = current.errorMessage,
                 isTeachingOverlayShowing = current.isTeachingOverlayShowing,
             )
+        persist()
         startCpuTurnIfNeeded()
     }
 
@@ -512,6 +530,7 @@ class MatchViewModel(
                 isTeachingOverlayShowing = isTeachingOverlayShowing,
             )
         }
+        persist()
         // Back to a position where the computer is to move, it moves again rather than sitting.
         startCpuTurnIfNeeded()
     }
