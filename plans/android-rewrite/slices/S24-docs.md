@@ -5,12 +5,12 @@ layer: docs
 points: 1
 depends_on: [S23, S07, S02, S25]
 touches: [Android/README.md, README.md, DECISIONS.md]
-status: todo
-branch:
-started:
-completed:
-actual_points:
-review_fixes:
+status: done
+branch: slice/android-rewrite/S24
+started: 2026-11-23T23:38
+completed: 2026-11-23T23:47
+actual_points: 2
+review_fixes: unrun adb example dropped; stale counts corrected
 blocked_reason:
 ---
 
@@ -76,7 +76,9 @@ cd .. && git diff --stat plan/android-rewrite...HEAD -- . ':!Android/README.md' 
 1: writing only.
 
 ## Actuals
-- **Actual points:**
-- **What took longer / shorter than expected:**
-- **Surprises / unknowns that surfaced:**
-- **Review fixes applied:**
+- **Estimate vs actual:** 1 → 2. Checking every claim against the merged code and slice actuals, and running every documented command (release script, release tests, regenerating both fixtures, the Swift suite), took longer than a 1.
+- **What shipped:** `Android/README.md` (toolchain, CLI and Android Studio paths, build/test/lint/release, layout, how the engine is verified and how to regenerate fixtures, running on a device); root `README.md` gains Android and corrected Swift test counts (171); `DECISIONS.md` Android section and "Found while porting".
+- **Counts quoted:** engine 441, app 329 (debug and release), Swift 171, conformance 108 games / 13,829 moves, golden 18 games / 146 samples.
+- **Review fixes:** dropped an unrun `adb` example; precise test-port wording; `npm run fixtures` gzip-header churn documented; stale root README counts corrected.
+- **Orchestrator edit:** release-build note updated with the emulator smoke test (iOS link opened, resume after force-stop, no crash).
+- **Not verified by the worker:** adb/emulator commands and Studio's daemon-JVM file (the orchestrator ran the former during the smoke test and observed the latter).
