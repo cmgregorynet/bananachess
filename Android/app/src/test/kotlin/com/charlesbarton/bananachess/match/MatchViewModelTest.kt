@@ -690,7 +690,8 @@ class MatchViewModelTest {
             val viewModel = matchViewModel(blendEffects = BlendEffectPolicy.Always)
             aimSelfBlend(viewModel)
             viewModel.confirmSelfBlend()
-            settle()
+            // Long enough for the blend to be shown, not for its pulp to be retired.
+            advance(SHOWN_MILLIS)
 
             val burst = viewModel.ui.blendBursts.single()
             assertEquals(PieceKind.Banana, burst.kind)
@@ -714,7 +715,8 @@ class MatchViewModelTest {
             val viewModel = matchViewModel(blendEffects = BlendEffectPolicy.Never)
             aimSelfBlend(viewModel)
             viewModel.confirmSelfBlend()
-            settle()
+            // Long enough for the blend to be shown, not for its pulp to be retired.
+            advance(SHOWN_MILLIS)
 
             assertEquals(1, viewModel.ui.blendBursts.size)
             assertNull(viewModel.ui.splatter)
@@ -733,7 +735,8 @@ class MatchViewModelTest {
             val at = matchViewModel(blendEffects = policy)
             aimSelfBlend(at)
             at.confirmSelfBlend()
-            settle()
+            // Long enough for the blend to be shown, not for its pulp to be retired.
+            advance(SHOWN_MILLIS)
 
             assertNotNull(under.ui.splatter)
             assertNull(at.ui.splatter)
@@ -747,12 +750,90 @@ class MatchViewModelTest {
 
             viewModel.tap(square(3, 3))
             viewModel.tap(square(2, 2))
-            settle()
+            // Long enough for the blend to be shown, not for its pulp to be retired.
+            advance(SHOWN_MILLIS)
 
             val burst = viewModel.ui.blendBursts.single()
             assertEquals(PieceKind.Blender, burst.kind)
             assertEquals(square(2, 2), burst.position)
             assertNull(viewModel.ui.splatter)
+        }
+
+    @Test
+    fun `the view model retires a burst and a splatter by itself when the view never does`() =
+        runTest {
+            val viewModel = matchViewModel(blendEffects = BlendEffectPolicy.Always)
+            aimSelfBlend(viewModel)
+            viewModel.confirmSelfBlend()
+            advance(SHOWN_MILLIS)
+            assertEquals(1, viewModel.ui.blendBursts.size)
+            assertNotNull(viewModel.ui.splatter)
+
+            advance(BlendBurst.LIFETIME_MILLIS)
+            assertEquals(emptyList(), viewModel.ui.blendBursts)
+            assertNotNull(viewModel.ui.splatter, "the splatter lives longer than the burst")
+
+            advance(Splatter.LIFETIME_MILLIS)
+            assertNull(viewModel.ui.splatter)
+        }
+
+    @Test
+    fun `effects do not pile up over many moves when nothing retires them`() =
+        runTest {
+            val viewModel = matchViewModel(blendEffects = BlendEffectPolicy.Always)
+            var mostBursts = 0
+            var moves = 0
+            while (moves < 120 && !viewModel.ui.authoritativeState.status.isOver) {
+                // Blends first, so plenty of pulp is thrown.
+                val actions = RulesEngine.legalActions(viewModel.ui.authoritativeState)
+                val action =
+                    actions.firstOrNull { action ->
+                        RulesEngine
+                            .apply(
+                                action,
+                                viewModel.ui.authoritativeState,
+                            ).events
+                            .any { it is GameEvent.Blended }
+                    } ?: actions.first()
+                viewModel.perform(action)
+                // Played straight through, as quickly as the timeline allows.
+                while (viewModel.ui.isResolving) advance(10)
+                mostBursts = maxOf(mostBursts, viewModel.ui.blendBursts.size)
+                moves += 1
+            }
+            settle()
+
+            assertTrue(moves > 10, "the match was long enough to say something")
+            assertTrue(mostBursts <= 4, "bursts piled up to $mostBursts")
+            assertEquals(emptyList(), viewModel.ui.blendBursts)
+            assertNull(viewModel.ui.splatter)
+        }
+
+    @Test
+    fun `attached haptics hear every event until they are detached, and are then let go`() =
+        runTest {
+            val viewModel = matchViewModel()
+            val attached = RecordingHaptics()
+            viewModel.attachHaptics(attached)
+            assertTrue(viewModel.hasAttachedHaptics)
+
+            viewModel.tap(square(4, 1))
+            viewModel.tap(square(3, 1))
+            settle()
+            assertEquals(1, attached.selections)
+            assertTrue(attached.events.isNotEmpty())
+
+            viewModel.detachHaptics(RecordingHaptics())
+            assertTrue(viewModel.hasAttachedHaptics, "only the haptics that were attached can be detached")
+            viewModel.detachHaptics(attached)
+            assertFalse(viewModel.hasAttachedHaptics)
+
+            val heard = attached.events.size
+            viewModel.tap(square(1, 1))
+            viewModel.tap(square(2, 1))
+            settle()
+            assertEquals(1, attached.selections)
+            assertEquals(heard, attached.events.size)
         }
 
     // Restart and undo
@@ -988,4 +1069,9 @@ class MatchViewModelTest {
             assertTrue(link.ui.isInputLocked)
             assertTrue(matchViewModel().ui.canPlayAgain)
         }
+
+    private companion object {
+        // Every blend in these tests is shown well before this, and none is retired until after.
+        const val SHOWN_MILLIS = 700L
+    }
 }
