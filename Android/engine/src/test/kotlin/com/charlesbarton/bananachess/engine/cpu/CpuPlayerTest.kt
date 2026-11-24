@@ -366,6 +366,46 @@ class CpuPlayerTest {
     }
 
     @Test
+    fun `told to stop before it starts, the search plays the statically best move`() {
+        val state = GameSetup.newGame()
+        var polls = 0
+
+        val analysis =
+            CpuPlayer(CpuDifficulty.Brutal, seed = 1uL, clock = { 0L }).analyse(state, shouldStop = {
+                polls += 1
+                true
+            })
+
+        assertEquals(1, polls, "the first check should end it")
+        assertEquals(0, analysis.completedDepth)
+        assertEquals(0, analysis.nodes)
+        val expected =
+            RulesEngine
+                .legalActions(
+                    state,
+                ).maxWith(compareBy<GameAction>({ Search.staticRank(it, state) }, { it }))
+        assertEquals(expected, analysis.action)
+    }
+
+    @Test
+    fun `told to stop mid-depth, the search ends at the next clock check and keeps the last full depth`() {
+        val state = GameSetup.newGame()
+        val threePly =
+            CpuPlayer(CpuDifficulty.Hard, seed = 1uL, plan = CpuDifficulty.Hard.plan.copy(depth = 3), clock = { 0L })
+                .analyse(state)
+        // Polled before depths two, three and four, then at the first node check inside depth four.
+        var polls = 0
+
+        val stopped =
+            CpuPlayer(CpuDifficulty.Hard, seed = 1uL, clock = { 0L }).analyse(state, shouldStop = { ++polls > 3 })
+
+        assertEquals(4, polls)
+        assertEquals(3, stopped.completedDepth)
+        assertEquals(threePly.action, stopped.action)
+        assertEquals(Search.TIME_CHECK_INTERVAL, stopped.nodes)
+    }
+
+    @Test
     fun `the search stops at the plan's depth when the clock allows more`() {
         val state = afterSixPlies()
         for (difficulty in listOf(CpuDifficulty.Medium, CpuDifficulty.Hard, CpuDifficulty.Brutal)) {

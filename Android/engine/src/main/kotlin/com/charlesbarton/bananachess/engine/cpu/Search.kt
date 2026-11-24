@@ -44,7 +44,8 @@ internal fun List<GameAction>.rankedBy(rank: (GameAction) -> Int): List<GameActi
  * count, so it is single-use and not thread-safe.
  *
  * Time is read from [clock] in nanoseconds; the search gives up once [hardCapNanos]
- * have passed since [startNanos].
+ * have passed since [startNanos], or once [shouldStop] says so. Both are polled at
+ * the same points.
  */
 internal class Search(
     private val root: PlayerId,
@@ -53,6 +54,7 @@ internal class Search(
     private val startNanos: Long,
     private val hardCapNanos: Long,
     private val quiescenceDepth: Int,
+    private val shouldStop: () -> Boolean = { false },
 ) {
     private val transpositions = HashMap<ULong, Entry>()
     private var timedOut = false
@@ -230,10 +232,12 @@ internal class Search(
         return best
     }
 
-    /** Counts this node and reports whether the search has run out of time. */
+    /** Counts this node and reports whether the search has run out of time or been told to stop. */
     private fun countNodeAndCheckClock(): Boolean {
         nodes += 1
-        if (nodes % TIME_CHECK_INTERVAL == 0 && clock() - startNanos >= hardCapNanos) timedOut = true
+        if (nodes % TIME_CHECK_INTERVAL == 0 && (shouldStop() || clock() - startNanos >= hardCapNanos)) {
+            timedOut = true
+        }
         return timedOut
     }
 
