@@ -28,7 +28,8 @@ Engine/                 Pure Swift package. No SwiftUI, no GameKit, no UIKit.
     Wildcards.swift                            the optional rule set and its progress
     CPU/                                       difficulty levels, evaluation, alpha-beta
     Online/                                    payload, authority, service protocol, fake
-  Tests/BananaChessEngineTests/                106 tests
+  Sources/ConformanceFixtures/, GoldenFixtures/ write the fixtures the ports are held to
+  Tests/BananaChessEngineTests/                171 tests
 App/
   BananaChess.xcodeproj
   BananaChess/
@@ -38,6 +39,10 @@ App/
     Online/              GameKit service and the lobby
     Rules/               rules screen and the first-launch teaching overlay
   BananaChessUITests/    the PRD's smoke path
+Android/                Native Kotlin and Jetpack Compose. See Android/README.md.
+  engine/               :engine, the Kotlin port of Engine/, pure JVM
+  app/                  :app, the Compose app in feature folders
+Web/                    TypeScript port of the engine, a browser client, a room server. See Web/README.md.
 ```
 
 ## Running it
@@ -57,6 +62,21 @@ cd App && DEVELOPER_DIR=/Applications/Xcode-26.5.0.app/Contents/Developer \
 
 Opening `App/BananaChess.xcodeproj` in Xcode works normally; the engine is referenced as
 a local package, so editing engine sources rebuilds the app.
+
+## Android
+
+`Android/` is a native Kotlin and Jetpack Compose app that plays the same game: the same
+rules version, the four computer levels, the same look, and play by link that works
+between an Android phone and an iPhone. It has no Game Center equivalent, so online play
+is by link only. The engine is a hand port, held to the Swift engine by the conformance
+fixture and a second, golden fixture of exact link bytes, position hashes and CPU
+evaluations. Build, test and run instructions are in `Android/README.md`; the decisions
+behind the port are under "Android" in `DECISIONS.md`.
+
+```sh
+source Android/scripts/env.sh
+cd Android && ./gradlew :engine:test :app:testDebugUnitTest :app:lintDebug ktlintCheck :app:assembleDebug
+```
 
 ## The shape of it
 
@@ -161,7 +181,7 @@ referenced by the app target — open `App/BananaChess.xcodeproj` and it resolve
 ```sh
 export DEVELOPER_DIR=/Applications/Xcode-26.5.0.app/Contents/Developer
 
-# Engine tests (120)
+# Engine tests (171)
 cd Engine && swift test
 
 # UI tests
