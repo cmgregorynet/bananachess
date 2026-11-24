@@ -27,7 +27,7 @@ import com.charlesbarton.bananachess.engine.model.BoardWrap
 import com.charlesbarton.bananachess.engine.model.PlayerId
 import com.charlesbarton.bananachess.engine.model.RuleSet
 import com.charlesbarton.bananachess.match.MatchMode
-import com.charlesbarton.bananachess.match.MatchStart
+import com.charlesbarton.bananachess.match.MatchSource
 import com.charlesbarton.bananachess.settings.InMemorySettingsStore
 import com.charlesbarton.bananachess.settings.Settings
 import kotlinx.coroutines.CoroutineScope
@@ -46,7 +46,7 @@ class HomeScreenTest {
     val composeRule = createComposeRule()
 
     private val store = InMemorySettingsStore()
-    private val started = mutableListOf<MatchStart>()
+    private val started = mutableListOf<MatchSource>()
     private var invites by mutableIntStateOf(0)
     private var rulesOpened by mutableIntStateOf(0)
 
@@ -112,7 +112,7 @@ class HomeScreenTest {
         composeRule.onNodeWithText("Local Two Player").performClick()
 
         composeRule.runOnIdle {
-            val start = started.single()
+            val start = (started.single() as MatchSource.New).deal()
             assertEquals(MatchMode.LocalVersus, start.mode)
             assertEquals(BoardSetup.Blendy, start.state.boardSetup)
             assertEquals(RuleSet.Wildcard, start.state.ruleSet)
@@ -301,7 +301,10 @@ class HomeScreenTest {
 
         composeRule.onNodeWithText("Start match").assertDoesNotExist()
         composeRule.runOnIdle {
-            assertEquals(MatchMode.Computer(CpuDifficulty.Hard, humanPlays = PlayerId.Two), started.single().mode)
+            assertEquals(
+                MatchMode.Computer(CpuDifficulty.Hard, humanPlays = PlayerId.Two),
+                (started.single() as MatchSource.New).mode,
+            )
             assertEquals(CpuDifficulty.Hard, store.current.cpuDifficulty)
             assertEquals(false, store.current.cpuHumanPlaysFirst)
         }

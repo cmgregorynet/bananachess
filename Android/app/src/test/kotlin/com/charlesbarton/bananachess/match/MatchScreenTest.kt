@@ -1,9 +1,14 @@
 package com.charlesbarton.bananachess.match
 
+import android.os.Bundle
+import android.os.Parcel
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalDensity
@@ -30,14 +35,20 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.unit.Density
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelStoreOwner
+import androidx.lifecycle.viewModelScope
+import androidx.lifecycle.viewmodel.compose.LocalViewModelStoreOwner
 import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.rememberNavController
-import com.charlesbarton.bananachess.AppGraph
+import com.charlesbarton.bananachess.AppContainer
 import com.charlesbarton.bananachess.BananaChessApp
 import com.charlesbarton.bananachess.Route
 import com.charlesbarton.bananachess.art.PaperTheme
+import com.charlesbarton.bananachess.engine.cpu.CpuDifficulty
 import com.charlesbarton.bananachess.engine.model.BoardSetup
+import com.charlesbarton.bananachess.engine.model.BoardWrap
 import com.charlesbarton.bananachess.engine.model.GameState
 import com.charlesbarton.bananachess.engine.model.GameStatus
 import com.charlesbarton.bananachess.engine.model.Move
@@ -54,6 +65,7 @@ import com.charlesbarton.bananachess.engine.setup.GameSetup
 import com.charlesbarton.bananachess.settings.InMemorySettingsStore
 import com.charlesbarton.bananachess.settings.Settings
 import com.charlesbarton.bananachess.settings.SettingsStore
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.test.TestScope
 import org.junit.Rule
 import org.junit.Test
@@ -64,6 +76,7 @@ import org.robolectric.annotation.GraphicsMode
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNotSame
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.test.fail
@@ -340,24 +353,77 @@ class MatchScreenTest {
 
     // region A whole match
 
+    // The app as a process holds it. Bumping [process] throws all of it away, as Android does when
+    // it reclaims a process in the background: the compositions, the view models and the
+    // container go, and only the saved back stack (and what is stored on disk) survives.
+    private var process by mutableIntStateOf(0)
+    private var savedBackStack: Bundle? = null
+    private var appNavController: NavHostController? = null
+
     private fun showApp(
-        graph: AppGraph,
+        settings: SettingsStore,
         onMatchCreated: (MatchViewModel) -> Unit = {},
-        onNavController: (NavHostController) -> Unit = {},
     ) {
         composeRule.setContent {
-            val navController = rememberNavController()
-            onNavController(navController)
-            PaperTheme {
-                BananaChessApp(
-                    graph = graph,
-                    navController = navController,
-                    // The app's own match, on the test's clock.
-                    createMatch = { start, _ -> scope.matchViewModel(start.state, start.mode).also(onMatchCreated) },
-                )
+            key(process) {
+                val owner =
+                    remember {
+                        object : ViewModelStoreOwner {
+                            override val viewModelStore = ViewModelStore()
+                        }
+                    }
+                val container = remember { AppContainer(settings) }
+                DisposableEffect(owner, container) {
+                    onDispose {
+                        owner.viewModelStore.clear()
+                        container.close()
+                    }
+                }
+                CompositionLocalProvider(LocalViewModelStoreOwner provides owner) {
+                    val fresh = rememberNavController()
+                    // Restored before the graph is set, as the activity restores it after a restart.
+                    val navController =
+                        remember(fresh) {
+                            fresh.restoreState(savedBackStack)
+                            fresh.also { appNavController = it }
+                        }
+                    PaperTheme {
+                        BananaChessApp(
+                            container = container,
+                            navController = navController,
+                            // The app's own match, on the test's clock.
+                            createMatch = { start, _ ->
+                                scope.matchViewModel(start.state, start.mode).also(onMatchCreated)
+                            },
+                        )
+                    }
+                }
             }
         }
         composeRule.waitForIdle()
+    }
+
+    private val navController: NavHostController get() = checkNotNull(appNavController)
+
+    /** Kills the app's process under it and starts a new one on the back stack it saved. */
+    private fun restartTheProcess() {
+        composeRule.runOnUiThread {
+            savedBackStack = navController.saveState()?.let(::throughAParcel)
+            process += 1
+        }
+        composeRule.waitForIdle()
+    }
+
+    // The saved state really is written out and read back, as it is across a process restart.
+    private fun throughAParcel(bundle: Bundle): Bundle {
+        val parcel = Parcel.obtain()
+        try {
+            parcel.writeBundle(bundle)
+            parcel.setDataPosition(0)
+            return checkNotNull(parcel.readBundle(javaClass.classLoader))
+        } finally {
+            parcel.recycle()
+        }
     }
 
     /** Takes the first legal action through the board, the way a player would. */
@@ -389,7 +455,7 @@ class MatchScreenTest {
     @Test
     fun `a local match is started from home, played to a result and played again`() {
         var created: MatchViewModel? = null
-        showApp(AppGraph(introductionSeen), onMatchCreated = { created = it })
+        showApp(introductionSeen, onMatchCreated = { created = it })
 
         composeRule.onNodeWithText("Local Two Player").performClick()
         composeRule.waitForIdle()
@@ -446,7 +512,7 @@ class MatchScreenTest {
             InMemorySettingsStore(
                 Settings(hasSeenTeachingOverlay = true, wildcardRulesEnabled = true, boardSetup = BoardSetup.Blendy),
             )
-        showApp(AppGraph(settings))
+        showApp(settings)
 
         composeRule.onNodeWithText("Local Two Player").performClick()
 
@@ -455,18 +521,82 @@ class MatchScreenTest {
     }
 
     @Test
-    fun `with no match to show, as after the process was restarted, the match route returns home`() {
-        var created: MatchViewModel? = null
-        var navController: NavHostController? = null
-        showApp(AppGraph(introductionSeen), onMatchCreated = { created = it }, onNavController = { navController = it })
+    fun `after the process is restarted under a match, the same match is dealt again`() {
+        val settings =
+            InMemorySettingsStore(
+                Settings(
+                    hasSeenTeachingOverlay = true,
+                    wildcardRulesEnabled = true,
+                    boardSetup = BoardSetup.Random,
+                    boardWrap = BoardWrap.Sides,
+                    blenderBattles = true,
+                ),
+            )
+        val created = mutableListOf<MatchViewModel>()
+        showApp(settings, onMatchCreated = { created += it })
+        composeRule.onNodeWithText("Local Two Player").performClick()
+        composeRule.waitForIdle()
+        val before = created.single()
+        val boardBefore = (0 until 6).flatMap { row -> (0 until 6).map { column -> label(row, column) } }
 
-        composeRule.runOnUiThread { checkNotNull(navController).navigate(Route.Match) }
+        restartTheProcess()
+
+        composeRule.onNodeWithTag(MatchTags.SCREEN).assertIsDisplayed()
+        composeRule.onNodeWithText("Local Two Player").assertDoesNotExist()
+        assertTrue(navController.currentDestination?.hasRoute<Route.Match>() == true)
+        val after = created.last()
+        assertEquals(2, created.size, "the restarted process should deal the match once")
+        assertNotSame(before, after)
+        assertFalse(before.viewModelScope.isActive, "the old process's match should be gone")
+        assertEquals(MatchMode.LocalVersus, after.ui.mode)
+        // The same Random board, rules and edges: the seed travelled with the route.
+        assertEquals(before.ui.authoritativeState, after.ui.authoritativeState)
+        assertEquals(BoardSetup.Random, after.ui.authoritativeState.boardSetup)
+        assertEquals(RuleSet.Wildcard, after.ui.authoritativeState.ruleSet)
+        assertEquals(BoardWrap.Sides, after.ui.authoritativeState.boardWrap)
+        assertTrue(after.ui.authoritativeState.blenderBattles)
+        assertEquals(boardBefore, (0 until 6).flatMap { row -> (0 until 6).map { column -> label(row, column) } })
+
+        // The back stack came back too.
+        composeRule.onNodeWithText("Back").performClick()
+        composeRule.onNodeWithText("Local Two Player").assertIsDisplayed()
+        composeRule.onNodeWithTag(MatchTags.SCREEN).assertDoesNotExist()
+    }
+
+    @Test
+    fun `after the process is restarted under a computer match, it comes back against the same CPU`() {
+        val settings =
+            InMemorySettingsStore(
+                Settings(hasSeenTeachingOverlay = true, cpuDifficulty = CpuDifficulty.Hard, cpuHumanPlaysFirst = false),
+            )
+        val created = mutableListOf<MatchViewModel>()
+        showApp(settings, onMatchCreated = { created += it })
+        composeRule.onNodeWithText("Play Computer").performClick()
+        composeRule.onNodeWithText("Start match").performClick()
+        composeRule.waitForIdle()
+        val before = created.single()
+
+        restartTheProcess()
+
+        composeRule.onNodeWithTag(MatchTags.SCREEN).assertIsDisplayed()
+        val after = created.last()
+        assertNotSame(before, after)
+        assertEquals(MatchMode.Computer(CpuDifficulty.Hard, humanPlays = PlayerId.Two), after.ui.mode)
+        assertEquals(before.ui.authoritativeState, after.ui.authoritativeState)
+    }
+
+    @Test
+    fun `a saved match with nothing saved returns home`() {
+        var created: MatchViewModel? = null
+        showApp(introductionSeen, onMatchCreated = { created = it })
+
+        composeRule.runOnUiThread { navController.navigate(Route.Match(MatchSource.Saved)) }
         composeRule.waitForIdle()
 
         composeRule.onNodeWithText("Local Two Player").assertIsDisplayed()
         composeRule.onNodeWithTag(MatchTags.SCREEN).assertDoesNotExist()
         assertNull(created)
-        assertEquals(true, checkNotNull(navController).currentDestination?.hasRoute<Route.Home>())
+        assertEquals(true, navController.currentDestination?.hasRoute<Route.Home>())
     }
 
     // endregion

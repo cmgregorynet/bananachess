@@ -9,7 +9,6 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import com.charlesbarton.bananachess.match.MatchTags
-import com.charlesbarton.bananachess.settings.DataStoreSettingsStore
 import kotlinx.coroutines.runBlocking
 import org.junit.Before
 import org.junit.Rule
@@ -29,7 +28,9 @@ class ScaffoldTest {
     @Before
     fun skipTheIntroduction() {
         runBlocking {
-            DataStoreSettingsStore.get(composeRule.activity).update { it.copy(hasSeenTeachingOverlay = true) }
+            (composeRule.activity.application as BananaChessApplication).container.settings.update {
+                it.copy(hasSeenTeachingOverlay = true)
+            }
         }
     }
 
