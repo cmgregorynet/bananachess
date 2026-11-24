@@ -5,9 +5,9 @@ import com.charlesbarton.bananachess.engine.model.BoardSetup
 import com.charlesbarton.bananachess.engine.model.BoardWrap
 import com.charlesbarton.bananachess.engine.model.PlayerId
 import com.charlesbarton.bananachess.engine.model.RuleSet
+import com.charlesbarton.bananachess.engine.online.MatchOptions
 import com.charlesbarton.bananachess.engine.setup.GameSetup
 import com.charlesbarton.bananachess.match.MatchMode
-import com.charlesbarton.bananachess.match.MatchOptions
 import com.charlesbarton.bananachess.settings.InMemorySettingsStore
 import com.charlesbarton.bananachess.settings.Settings
 import com.charlesbarton.bananachess.settings.SettingsStore

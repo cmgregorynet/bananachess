@@ -1,11 +1,9 @@
 package com.charlesbarton.bananachess.match
 
 import com.charlesbarton.bananachess.engine.cpu.CpuDifficulty
-import com.charlesbarton.bananachess.engine.model.BoardSetup
-import com.charlesbarton.bananachess.engine.model.BoardWrap
 import com.charlesbarton.bananachess.engine.model.GameState
 import com.charlesbarton.bananachess.engine.model.PlayerId
-import com.charlesbarton.bananachess.engine.model.RuleSet
+import com.charlesbarton.bananachess.engine.online.LastMove
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -66,16 +64,17 @@ sealed interface MatchMode {
         }
 }
 
-/** The choices on the start screen that decide what board is dealt and which rules it is played under. */
-data class MatchOptions(
-    val ruleSet: RuleSet = RuleSet.Standard,
-    val boardSetup: BoardSetup = BoardSetup.Standard,
-    val boardWrap: BoardWrap = BoardWrap.Flat,
-    val blenderBattles: Boolean = false,
-)
-
-/** Everything the Match screen needs to open: who is playing, and the position to open on. */
+/**
+ * Everything the Match screen needs to open: who is playing, and the position to open on.
+ *
+ * @param lastMove in a link match, the move that produced [state] as the link carried it. It
+ *   goes back out in the next link if the match ends without another local move.
+ * @param animateFrom the position to show first, with [lastMove]'s events played from it so the
+ *   opponent's move is seen rather than just its result. Null opens on [state] directly.
+ */
 data class MatchStart(
     val mode: MatchMode,
     val state: GameState,
+    val lastMove: LastMove? = null,
+    val animateFrom: GameState? = null,
 )

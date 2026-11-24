@@ -154,6 +154,12 @@ data class MatchUiState(
     val hasUndoHistory: Boolean = false,
     /** The first-match introduction, over everything else, until the player closes it. */
     val isTeachingOverlayShowing: Boolean = false,
+    /**
+     * In link play, the `bananachess://` link to hand the opponent, or null while there is
+     * nothing for them to do. Made when the rules decide a turn rather than on every read: it
+     * is the whole match, compressed.
+     */
+    val linkToSend: String? = null,
 ) {
     // Board geometry
 
@@ -231,8 +237,31 @@ data class MatchUiState(
             if (isOpponentThinking && mode is MatchMode.Computer) {
                 return "${mode.difficulty.displayName} CPU is thinking…"
             }
+            if (mode is MatchMode.ByLink && linkToSend != null) {
+                return if (displayState.history.isEmpty()) "Send the link to start" else "Send your move"
+            }
             return "${mode.name(displayState.activePlayer)} to move"
         }
+
+    // Link play
+
+    /** What the control that sends [linkToSend] says. */
+    val linkHandoffTitle: String
+        get() =
+            when {
+                authoritativeState.status.isOver -> "Send the final position"
+                authoritativeState.history.isEmpty() -> "Send the invitation"
+                else -> "Send your move"
+            }
+
+    /** The message that goes with the link. */
+    val linkShareText: String
+        get() =
+            if (authoritativeState.status.isOver) {
+                "Here's how our Banana Chess match finished."
+            } else {
+                "Your move in Banana Chess."
+            }
 
     fun scoreboard(player: PlayerId): Scoreboard {
         val name = mode.name(player)

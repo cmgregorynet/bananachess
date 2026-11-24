@@ -42,6 +42,7 @@ import com.charlesbarton.bananachess.art.PaperButton
 import com.charlesbarton.bananachess.art.isReducedMotion
 import com.charlesbarton.bananachess.home.HomeScreen
 import com.charlesbarton.bananachess.home.HomeViewModel
+import com.charlesbarton.bananachess.link.LinkPlay
 import com.charlesbarton.bananachess.match.MatchScreen
 import com.charlesbarton.bananachess.match.MatchSnapshotStore
 import com.charlesbarton.bananachess.match.MatchSource
@@ -119,6 +120,8 @@ fun newMatchViewModel(
         cpuDispatcher = container.dispatchers.default,
         cpuOpponent = container.cpuOpponent,
         snapshots = container.snapshots,
+        lastMove = start.lastMove,
+        animateFrom = start.animateFrom,
     )
 
 /**
@@ -131,6 +134,9 @@ fun newMatchViewModel(
  * snapshot is where it is, and dealing the source again would put it back to its opening. A
  * restored new match with nothing saved is dealt again; "Resume match" with nothing saved opens
  * nothing.
+ *
+ * A link match always reads the saved match first: [LinkPlay.start] prefers it when it is the same
+ * match at least as far on, and otherwise uses it to show the link's last move being played.
  */
 internal class MatchOpening(
     source: MatchSource,
@@ -159,6 +165,11 @@ internal class MatchOpening(
         handle[OPENED] = true
         if (source is MatchSource.New && !openedBefore) {
             mutableState.value = State.Ready(source.deal())
+        } else if (source is MatchSource.ByLink) {
+            viewModelScope.launch {
+                val start = LinkPlay.start(source, snapshots.load())
+                mutableState.value = start?.let(State::Ready) ?: State.NoMatch
+            }
         } else {
             viewModelScope.launch {
                 val saved = snapshots.load()?.let { MatchStart(it.mode, it.state) }
@@ -195,6 +206,16 @@ fun BananaChessApp(
                             initializer { HomeViewModel(container.settings, snapshots = container.snapshots) }
                         },
                 )
+            // A link that was opened and accepted goes straight to its match.
+            val linkToOpen =
+                homeViewModel.state
+                    .collectAsStateWithLifecycle()
+                    .value.linkToOpen
+            LaunchedEffect(linkToOpen) {
+                if (linkToOpen == null) return@LaunchedEffect
+                homeViewModel.linkOpened()
+                navController.navigate(Route.Match(linkToOpen)) { launchSingleTop = true }
+            }
             HomeScreen(
                 viewModel = homeViewModel,
                 onStartMatch = { source -> navController.navigate(Route.Match(source)) { launchSingleTop = true } },

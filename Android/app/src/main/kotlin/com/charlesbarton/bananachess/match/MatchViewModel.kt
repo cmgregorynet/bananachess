@@ -14,10 +14,13 @@ import com.charlesbarton.bananachess.engine.model.PlayerId
 import com.charlesbarton.bananachess.engine.model.Position
 import com.charlesbarton.bananachess.engine.model.RestoreBlender
 import com.charlesbarton.bananachess.engine.model.wildcardStanding
+import com.charlesbarton.bananachess.engine.online.LastMove
+import com.charlesbarton.bananachess.engine.online.MatchAuthorityError
 import com.charlesbarton.bananachess.engine.rules.RulesEngine
 import com.charlesbarton.bananachess.engine.rules.RulesError
 import com.charlesbarton.bananachess.engine.rules.applying
 import com.charlesbarton.bananachess.engine.setup.GameSetup
+import com.charlesbarton.bananachess.link.LinkPlay
 import com.charlesbarton.bananachess.settings.InMemorySettingsStore
 import com.charlesbarton.bananachess.settings.Settings
 import com.charlesbarton.bananachess.settings.SettingsStore
@@ -55,6 +58,9 @@ import kotlin.math.abs
  * @param cpuOpponent makes the computer player for a [MatchMode.Computer] match, once.
  * @param snapshots keeps this match for resuming: replaced when the match opens and after every
  *   move, restart and undo, and cleared once it is over.
+ * @param lastMove in link play, the move that produced [initialState] as its link carried it.
+ * @param animateFrom in link play, the position just before [lastMove]: the match opens there and
+ *   plays the move out, so the opponent's move is seen rather than only its result.
  */
 class MatchViewModel(
     mode: MatchMode,
@@ -67,9 +73,25 @@ class MatchViewModel(
     private val cpuDispatcher: CoroutineDispatcher = Dispatchers.Default,
     cpuOpponent: (CpuDifficulty) -> CpuOpponent = CpuOpponent::forDifficulty,
     private val snapshots: MatchSnapshotStore = MatchSnapshotStore.None,
+    lastMove: LastMove? = null,
+    animateFrom: GameState? = null,
 ) : ViewModel(scope) {
+    // The move the next outgoing link carries, so the opponent sees it played out.
+    private var lastMove: LastMove? = lastMove
+
+    // Played out as the match opens, from [animateFrom]. Without that position there is nothing to play them on.
+    private val incomingEvents: List<GameEvent> = if (animateFrom != null) lastMove?.events.orEmpty() else emptyList()
+
     private val mutableState =
-        MutableStateFlow(MatchUiState(mode = mode, displayState = initialState, authoritativeState = initialState))
+        MutableStateFlow(
+            MatchUiState(
+                mode = mode,
+                // An incoming move opens on the position before it, never flashing the one after.
+                displayState = animateFrom?.takeIf { incomingEvents.isNotEmpty() } ?: initialState,
+                authoritativeState = initialState,
+                linkToSend = LinkPlay.linkToSend(mode, initialState, lastMove),
+            ),
+        )
     val state: StateFlow<MatchUiState> = mutableState.asStateFlow()
 
     private val timeline = EventTimeline(scope, reduceMotion, show = ::show, finished = ::finishTimeline)
@@ -97,6 +119,9 @@ class MatchViewModel(
         }
         // Any match that opens is now the one to resume, replacing whatever was saved before.
         persist()
+        // A link that carries the opponent's move plays it out. It is already saved: persist
+        // stored the position after it, which is where this match now is.
+        if (incomingEvents.isNotEmpty()) animate(incomingEvents)
         // When the human plays second, the computer opens. A resumed match whose turn
         // belongs to the computer carries on the same way.
         startCpuTurnIfNeeded()
@@ -233,21 +258,43 @@ class MatchViewModel(
      */
     internal fun perform(action: GameAction) {
         val before = state.value.authoritativeState
-        val transition =
-            try {
-                RulesEngine.apply(action, before)
-            } catch (error: RulesError) {
-                // The board only offers legal moves, so this means the screen and the engine disagree.
-                change { copy(errorMessage = error.message) }
-                return
+        val mode = state.value.mode
+        val after: GameState
+        val events: List<GameEvent>
+        try {
+            if (mode is MatchMode.ByLink) {
+                // There is no remote write to confirm, so the turn commits as soon as it is
+                // prepared; the link to send is built from the same payload.
+                val turn = LinkPlay.authority(mode, before).prepareTurn(action)
+                after = turn.payload.state
+                events = turn.events
+                lastMove = turn.payload.lastMove
+            } else {
+                val transition = RulesEngine.apply(action, before)
+                after = transition.state
+                events = transition.events
             }
+        } catch (error: RulesError) {
+            // The board only offers legal moves, so this means the screen and the engine disagree.
+            change { copy(errorMessage = error.message) }
+            return
+        } catch (error: MatchAuthorityError) {
+            change { copy(errorMessage = error.message) }
+            return
+        }
         undoStack.addLast(before)
-        change { copy(authoritativeState = transition.state, hasUndoHistory = true) }
+        change {
+            copy(
+                authoritativeState = after,
+                hasUndoHistory = true,
+                linkToSend = LinkPlay.linkToSend(mode, after, lastMove),
+            )
+        }
         // Saved as soon as the rules have decided it rather than once it has played out: a
         // player who leaves mid-animation, or a computer that answers while the app is in the
         // background, would otherwise come back to a match missing its last move.
         persist()
-        animate(transition.events)
+        animate(events)
     }
 
     /** Saves the match as it stands, or forgets it once it is over: a finished match has nothing to resume. */
@@ -502,6 +549,7 @@ class MatchViewModel(
                     blenderBattles = blenderBattles,
                 )
             }
+        lastMove = null
         mutableState.value =
             MatchUiState(
                 mode = current.mode,
@@ -509,6 +557,7 @@ class MatchViewModel(
                 authoritativeState = fresh,
                 errorMessage = current.errorMessage,
                 isTeachingOverlayShowing = current.isTeachingOverlayShowing,
+                linkToSend = LinkPlay.linkToSend(current.mode, fresh, lastMove = null),
             )
         persist()
         startCpuTurnIfNeeded()
@@ -528,6 +577,8 @@ class MatchViewModel(
                 errorMessage = errorMessage,
                 hasUndoHistory = undoStack.isNotEmpty(),
                 isTeachingOverlayShowing = isTeachingOverlayShowing,
+                // Never in link play, which has no undo; kept right should that change.
+                linkToSend = LinkPlay.linkToSend(mode, previous, lastMove = null),
             )
         }
         persist()

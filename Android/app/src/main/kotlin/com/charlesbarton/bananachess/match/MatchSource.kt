@@ -5,6 +5,7 @@ import com.charlesbarton.bananachess.engine.model.BoardSetup
 import com.charlesbarton.bananachess.engine.model.BoardWrap
 import com.charlesbarton.bananachess.engine.model.PlayerId
 import com.charlesbarton.bananachess.engine.model.RuleSet
+import com.charlesbarton.bananachess.engine.online.MatchOptions
 import com.charlesbarton.bananachess.engine.setup.GameSetup
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
@@ -72,7 +73,17 @@ sealed interface MatchSource {
     @SerialName("saved")
     data object Saved : MatchSource
 
-    // S21/S22 add `ByLink`, carrying what is needed to rebuild a link match.
+    /**
+     * A match by link: an invitation just made here, or a link someone sent. [link] is the URL
+     * exactly as it was made or received, so the match it opens is the one the link holds, byte
+     * for byte; [localPlayer] is the seat this phone plays.
+     */
+    @Serializable
+    @SerialName("byLink")
+    data class ByLink(
+        val link: String,
+        val localPlayer: PlayerId,
+    ) : MatchSource
 
     /** Who a new match is played against. */
     @Serializable
