@@ -5,12 +5,12 @@ layer: ui
 points: 2
 depends_on: [S19, S10, S26]
 touches: [Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/MatchSnapshotStore.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/MatchViewModel.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/MatchMode.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/home/, Android/app/src/main/kotlin/com/charlesbarton/bananachess/BananaChessApp.kt, Android/app/src/test/kotlin/com/charlesbarton/bananachess/match/MatchSnapshotStoreTest.kt, Android/app/src/test/kotlin/com/charlesbarton/bananachess/home/ResumeTest.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/AppContainer.kt, Android/engine/src/main/kotlin/com/charlesbarton/bananachess/engine/online/GameStateCodec.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/MatchSource.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/BananaChessApp.kt]
-status: todo
-branch:
-started:
-completed:
-actual_points:
-review_fixes:
+status: done
+branch: slice/android-rewrite/S20
+started: 2026-11-23T20:38
+completed: 2026-11-23T20:49
+actual_points: 3
+review_fixes: queued load hang on cancelled scope; injected scope; NoMatch rename
 blocked_reason:
 ---
 
@@ -77,7 +77,9 @@ cd Android && ./gradlew :app:testDebugUnitTest :app:lintDebug ktlintCheck :app:a
 2: one file store and one Home entry.
 
 ## Actuals
-- **Actual points:**
-- **What took longer / shorter than expected:**
-- **Surprises / unknowns that surfaced:**
-- **Review fixes applied:**
+- **Estimate vs actual:** 2 → 3. Telling a restored Match route from a fresh one needed an entry-scoped `MatchOpening` view model (SavedStateHandle flag) and an async Loading state; the store, codec reuse and Home button were quick.
+- **What shipped:** `MatchSnapshotStore` (save/clear fire-and-forget, `suspend load()`); `FileMatchSnapshotStore(directory, scope)` serialises every operation through one channel reader, writes temp → fsync → `ATOMIC_MOVE` to `filesDir/current-match.json` `{rulesVersion, mode, state}`; load deletes wrong-version (checked before full decode), corrupt or finished snapshots. `InMemoryMatchSnapshotStore`, `MatchSnapshotStore.None`. `AppContainer.snapshots`. Home's "Resume match" (detail "Local two player" / "<Difficulty> CPU" / "By link") refreshed each time Home shows. `MatchOpening` replaces `matchStartOf`: restored New prefers the snapshot; Saved loads or pops Home. `GameStateCodec.toJson/fromJson` now internal. `MatchMode` @Serializable (local/computer/byLink).
+- **Deliberate deviation:** save hook in `perform()` (plus construction, restart, undo) rather than `finishTimeline()`, so a move made just before backgrounding — or a CPU reply landing while away — is never lost. Finished states clear instead of save, so "Done" needs no hook.
+- **Review fixes:** queued load no longer hangs when the store scope ends; MatchOpening scope injected; `State.Nothing` → `NoMatch`; test stores off backgroundScope.
+- **Verification:** merged tree, no cache — engine tests, app tests, lint, ktlint, assembleDebug.
+- **Notes for S21:** ByLink matches currently save/resume like any mode; S21 decides whether to keep the payload/authority too or skip ByLink in persist. Incoming link moves that bypass `perform()` need their own persist. Add `MatchSource.ByLink` to `MatchOpening`.
