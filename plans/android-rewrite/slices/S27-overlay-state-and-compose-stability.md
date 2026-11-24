@@ -5,12 +5,12 @@ layer: ui
 points: 2
 depends_on: [S26]
 touches: [Android/app/src/main/kotlin/com/charlesbarton/bananachess/rules/TeachingOverlay.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/MatchScreen.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/MatchViewModel.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/MatchUiState.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/BoardView.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/BananaChessApp.kt, Android/app/compose-stability.conf, Android/app/build.gradle.kts, Android/app/src/test/kotlin/com/charlesbarton/bananachess/match/, Android/app/src/test/kotlin/com/charlesbarton/bananachess/rules/]
-status: todo
-branch:
-started:
-completed:
-actual_points:
-review_fixes:
+status: done
+branch: slice/android-rewrite/S27
+started: 2026-11-23T17:54
+completed: 2026-11-23T20:26
+actual_points: 3
+review_fixes: settle() in overlay tests; preview helper moved; restart/undo keep overlay flag
 blocked_reason:
 ---
 
@@ -71,7 +71,9 @@ cd .. && /usr/bin/grep -rln --include='*.kt' 'SettingsStore' Android/app/src/mai
 2: a small state move plus build configuration and narrower keys, with tests for each.
 
 ## Actuals
-- **Actual points:**
-- **What took longer / shorter than expected:**
-- **Surprises / unknowns that surfaced:**
-- **Review fixes applied:**
+- **Estimate vs actual:** 2 → 3. Narrowing BoardView without re-deriving rule helpers in the view, and moving the settings read/write onto the view model's dispatcher in tests, took longer than planned.
+- **What shipped:** `MatchViewModel` owns the teaching overlay (`isTeachingOverlayShowing`, `dismissTeachingOverlay()`), reading `hasSeenTeachingOverlay` once and writing it best-effort; no composable takes `SettingsStore`. `compose-stability.conf` marks engine model types and `CpuDifficulty` stable. BoardView layers receive only what they draw; square descriptions are remembered on exactly the fields they read, asserted by a counting test (36 → 36 after flash/burst/splatter → 72 after selection).
+- **Review fixes:** settle() in overlay tests; preview helper moved to `previewMatchViewModel`; redundant dismissed flag dropped; restart/undo carry the overlay flag.
+- **Outside touches:** `art/BlendEffectsTest.kt` (removed the `settings =` argument).
+- **Verification:** merged tree, no cache — testDebugUnitTest, lintDebug, ktlintCheck, assembleDebug; 258 tests green.
+- **Notes for later slices:** `MatchViewModel(mode, initialState, settings, blendEffects, haptics, reduceMotion, scope)`; test helper `TestScope.matchViewModel(settings = …)` calls `runCurrent()` after construction.
