@@ -11,8 +11,10 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
@@ -30,9 +32,12 @@ import androidx.navigation.compose.rememberNavController
 import com.charlesbarton.bananachess.art.Palette
 import com.charlesbarton.bananachess.art.PaperBackground
 import com.charlesbarton.bananachess.art.PaperButton
+import com.charlesbarton.bananachess.art.isReducedMotion
 import com.charlesbarton.bananachess.home.HomeScreen
 import com.charlesbarton.bananachess.home.HomeViewModel
+import com.charlesbarton.bananachess.match.MatchScreen
 import com.charlesbarton.bananachess.match.MatchStart
+import com.charlesbarton.bananachess.match.MatchViewModel
 import com.charlesbarton.bananachess.rules.RulesScreen
 import com.charlesbarton.bananachess.settings.DataStoreSettingsStore
 import com.charlesbarton.bananachess.settings.SettingsStore
@@ -79,11 +84,25 @@ class AppGraph(
     }
 }
 
+/**
+ * The match view model as the app makes it. Everything a match needs from outside the screen
+ * (haptics, the CPU, the saved match) is handed over here.
+ */
+fun newMatchViewModel(
+    start: MatchStart,
+    reduceMotion: () -> Boolean,
+): MatchViewModel = MatchViewModel(mode = start.mode, initialState = start.state, reduceMotion = reduceMotion)
+
+/**
+ * @param createMatch makes the view model for a match that is starting. Called once per visit
+ *   to the Match route; `reduceMotion` reads the system setting each time it is asked.
+ */
 @Composable
 fun BananaChessApp(
     graph: AppGraph,
     modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController(),
+    createMatch: (start: MatchStart, reduceMotion: () -> Boolean) -> MatchViewModel = ::newMatchViewModel,
 ) {
     NavHost(navController = navController, startDestination = Route.Home, modifier = modifier) {
         composable<Route.Home> {
@@ -101,14 +120,25 @@ fun BananaChessApp(
         }
         composable<Route.Match> {
             val start = graph.matchStart.current
-            PlaceholderScreen(
-                title = "Match",
-                detail =
-                    start?.let { "${it.mode.name(it.state.activePlayer)} to move" }
-                        ?: "No match to show.",
-                tag = PlaceholderTags.MATCH,
-                onBack = navController::popBackStack,
-            )
+            if (start == null) {
+                // The process was restarted under the match and the match went with it. There
+                // is nothing to show, so go back to where one can be started.
+                LaunchedEffect(Unit) { navController.popBackStack(Route.Match, inclusive = true) }
+            } else {
+                val context = LocalContext.current.applicationContext
+                // Scoped to this back-stack entry: a rotation keeps the match, leaving ends it.
+                val matchViewModel: MatchViewModel =
+                    viewModel(
+                        factory = viewModelFactory { initializer { createMatch(start) { isReducedMotion(context) } } },
+                    )
+                MatchScreen(
+                    viewModel = matchViewModel,
+                    settings = graph.settings,
+                    // By name, so a second press during the way out cannot pop Home too.
+                    onExit = { navController.popBackStack(Route.Match, inclusive = true) },
+                    onShowRules = { navController.navigate(Route.Rules) { launchSingleTop = true } },
+                )
+            }
         }
         composable<Route.Rules> {
             // Pops Rules by name, so a second press of "Done" during the way out cannot pop Home too.
@@ -127,7 +157,6 @@ fun BananaChessApp(
 
 /** Test tags of the stand-in screens. Each goes away with the screen it stands in for. */
 object PlaceholderTags {
-    const val MATCH = "matchPlaceholder"
     const val INVITE = "invitePlaceholder"
 }
 

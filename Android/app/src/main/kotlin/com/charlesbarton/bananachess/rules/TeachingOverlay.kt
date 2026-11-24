@@ -1,5 +1,6 @@
 package com.charlesbarton.bananachess.rules
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
@@ -18,12 +19,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -134,26 +137,35 @@ fun rememberTeachingOverlayState(): TeachingOverlayState =
  * never again once they press "Play". Place it last in the screen's root box, over the board.
  *
  * Shows nothing until the settings have been read, so a returning player never sees it flash.
+ *
+ * It is drawn in the host's tree, not in a window of its own, so it does two things a dialog
+ * would get for free: the system back button closes it, exactly as "Play" does, and
+ * [onShowingChange] tells the host when to hide what is underneath from TalkBack.
  */
 @Composable
 fun FirstMatchTeachingOverlay(
     settings: SettingsStore,
     modifier: Modifier = Modifier,
+    onShowingChange: (Boolean) -> Unit = {},
 ) {
     val hasSeen by remember(settings) { settings.settings.map { it.hasSeenTeachingOverlay } }
         .collectAsStateWithLifecycle(initialValue = true)
     // Closes on the press, not when the write lands: the write is best-effort and may never land.
     var isDismissed by rememberSaveable { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
+    val isShowing = !hasSeen && !isDismissed
 
-    if (!hasSeen && !isDismissed) {
-        TeachingOverlay(
-            onFinished = {
-                isDismissed = true
-                scope.launch { settings.update { it.copy(hasSeenTeachingOverlay = true) } }
-            },
-            modifier = modifier,
-        )
+    fun finish() {
+        isDismissed = true
+        scope.launch { settings.update { it.copy(hasSeenTeachingOverlay = true) } }
+    }
+
+    val currentOnShowingChange by rememberUpdatedState(onShowingChange)
+    LaunchedEffect(isShowing) { currentOnShowingChange(isShowing) }
+
+    if (isShowing) {
+        BackHandler(onBack = ::finish)
+        TeachingOverlay(onFinished = ::finish, modifier = modifier)
     }
 }
 
