@@ -93,7 +93,7 @@ internal object MatchSourceNavType : NavType<MatchSource>(isNullableAllowed = fa
 
 /**
  * The match view model as the app makes it. Everything a match needs from outside the screen
- * comes from the [container]: S19 passes its CPU player factory and background dispatcher here.
+ * comes from the [container], the computer and the thread it thinks on included.
  */
 fun newMatchViewModel(
     container: AppContainer,
@@ -106,6 +106,8 @@ fun newMatchViewModel(
         settings = container.settings,
         reduceMotion = reduceMotion,
         scope = CoroutineScope(SupervisorJob() + container.dispatchers.main),
+        cpuDispatcher = container.dispatchers.default,
+        cpuOpponent = container.cpuOpponent,
     )
 
 /**

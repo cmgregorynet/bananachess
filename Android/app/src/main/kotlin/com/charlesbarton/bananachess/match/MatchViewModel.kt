@@ -2,6 +2,8 @@ package com.charlesbarton.bananachess.match
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.charlesbarton.bananachess.engine.cpu.CpuDifficulty
+import com.charlesbarton.bananachess.engine.cpu.CpuPlayer
 import com.charlesbarton.bananachess.engine.model.GameAction
 import com.charlesbarton.bananachess.engine.model.GameEvent
 import com.charlesbarton.bananachess.engine.model.GameState
@@ -19,15 +21,19 @@ import com.charlesbarton.bananachess.engine.setup.GameSetup
 import com.charlesbarton.bananachess.settings.InMemorySettingsStore
 import com.charlesbarton.bananachess.settings.Settings
 import com.charlesbarton.bananachess.settings.SettingsStore
+import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.abs
 
 /**
@@ -44,6 +50,9 @@ import kotlin.math.abs
  *   outlives the screen.
  * @param reduceMotion asked before every beat, so a change in the system setting takes
  *   effect on the next event.
+ * @param cpuDispatcher where the computer's search runs. Never [scope]'s thread: a search can
+ *   take seconds.
+ * @param cpuOpponent makes the computer player for a [MatchMode.Computer] match, once.
  */
 class MatchViewModel(
     mode: MatchMode,
@@ -53,6 +62,8 @@ class MatchViewModel(
     private val haptics: MatchHaptics = MatchHaptics.None,
     reduceMotion: () -> Boolean = { false },
     scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate),
+    private val cpuDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    cpuOpponent: (CpuDifficulty) -> CpuOpponent = CpuOpponent::forDifficulty,
 ) : ViewModel(scope) {
     private val mutableState =
         MutableStateFlow(MatchUiState(mode = mode, displayState = initialState, authoritativeState = initialState))
@@ -70,12 +81,19 @@ class MatchViewModel(
 
     internal val hasAttachedHaptics: Boolean get() = attachedHaptics != null
 
+    private val cpu: CpuOpponent? = (mode as? MatchMode.Computer)?.let { cpuOpponent(it.difficulty) }
+
+    // In viewModelScope, so clearing the view model cancels it, and with it the search.
+    private var cpuJob: Job? = null
+
     init {
         // Hidden until the settings have been read, so a returning player never sees it flash.
         viewModelScope.launch {
             val hasSeen = settings.settings.first().hasSeenTeachingOverlay
             if (!hasSeen) change { copy(isTeachingOverlayShowing = true) }
         }
+        // When the human plays second, the computer opens.
+        startCpuTurnIfNeeded()
     }
 
     private inline fun change(transform: MatchUiState.() -> MatchUiState) {
@@ -87,6 +105,9 @@ class MatchViewModel(
     /**
      * Holds the timeline while nobody can see it. Left running, a move would finish off
      * screen, so the player would return to a board that had changed without them seeing how.
+     *
+     * A computer that is thinking carries on: its reply is applied when it comes and waits in
+     * the timeline, so it plays out once the player is back.
      */
     fun onSceneInactive() = timeline.pause()
 
@@ -264,6 +285,39 @@ class MatchViewModel(
 
     private fun finishTimeline() {
         change { copy(displayState = authoritativeState, isResolving = false, flash = null) }
+        startCpuTurnIfNeeded()
+    }
+
+    // The computer
+
+    /**
+     * Starts the computer's search if it is the computer's turn and the board is still. The
+     * search runs on [cpuDispatcher] against a snapshot, and its answer comes back here to
+     * go through [perform] like any other move.
+     */
+    private fun startCpuTurnIfNeeded() {
+        val current = state.value
+        val mode = current.mode as? MatchMode.Computer ?: return
+        val cpu = cpu ?: return
+        val snapshot = current.authoritativeState
+        if (snapshot.status.isOver || snapshot.activePlayer == mode.humanPlays || current.isResolving) return
+
+        cpuJob?.cancel()
+        change { copy(isOpponentThinking = true) }
+        cpuJob =
+            viewModelScope.launch {
+                // Stops the search, not just the wait for it, when this job is cancelled.
+                val action = withContext(cpuDispatcher) { cpu.selectAction(snapshot) { !coroutineContext.isActive } }
+                // A little thinking time even when the answer was instant, so the turn reads
+                // as a turn rather than a flicker.
+                delay(MINIMUM_THINKING_MILLIS)
+                change { copy(isOpponentThinking = false) }
+                // By identity: anything that replaced the position since, a restart, an undo or
+                // another move, makes this answer one to a question nobody is asking now.
+                if (state.value.authoritativeState !== snapshot) return@launch
+                // No action means the engine has already passed or ended the turn.
+                if (action != null) perform(action)
+            }
     }
 
     /**
@@ -419,6 +473,7 @@ class MatchViewModel(
      */
     fun restart() {
         timeline.stop()
+        cpuJob?.cancel()
         undoStack.clear()
         val current = state.value
         val fresh =
@@ -438,6 +493,7 @@ class MatchViewModel(
                 errorMessage = current.errorMessage,
                 isTeachingOverlayShowing = current.isTeachingOverlayShowing,
             )
+        startCpuTurnIfNeeded()
     }
 
     /** Development affordance only: never shown in a release build. */
@@ -445,6 +501,7 @@ class MatchViewModel(
         if (!state.value.canUndo) return
         val previous = undoStack.removeLastOrNull() ?: return
         timeline.stop()
+        cpuJob?.cancel()
         change {
             MatchUiState(
                 mode = mode,
@@ -454,6 +511,33 @@ class MatchViewModel(
                 hasUndoHistory = undoStack.isNotEmpty(),
                 isTeachingOverlayShowing = isTeachingOverlayShowing,
             )
+        }
+        // Back to a position where the computer is to move, it moves again rather than sitting.
+        startCpuTurnIfNeeded()
+    }
+
+    private companion object {
+        /** The shortest a computer's turn ever takes. */
+        const val MINIMUM_THINKING_MILLIS = 320L
+    }
+}
+
+/**
+ * The computer as a match sees it: one action for a snapshot, found synchronously on whatever
+ * thread calls it. An interface so tests can stand in a computer that answers on cue.
+ */
+fun interface CpuOpponent {
+    /** @param shouldStop polled during the search; true means the answer is no longer wanted. */
+    fun selectAction(
+        state: GameState,
+        shouldStop: () -> Boolean,
+    ): GameAction?
+
+    companion object {
+        /** The engine's own player at [difficulty]. */
+        fun forDifficulty(difficulty: CpuDifficulty): CpuOpponent {
+            val player = CpuPlayer(difficulty)
+            return CpuOpponent { state, shouldStop -> player.selectAction(state, shouldStop) }
         }
     }
 }

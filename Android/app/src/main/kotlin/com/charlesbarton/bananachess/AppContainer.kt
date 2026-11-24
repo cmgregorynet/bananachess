@@ -1,6 +1,8 @@
 package com.charlesbarton.bananachess
 
 import android.content.Context
+import com.charlesbarton.bananachess.engine.cpu.CpuDifficulty
+import com.charlesbarton.bananachess.match.CpuOpponent
 import com.charlesbarton.bananachess.settings.DataStoreSettingsStore
 import com.charlesbarton.bananachess.settings.SettingsStore
 import kotlinx.coroutines.CoroutineDispatcher
@@ -20,15 +22,17 @@ data class AppDispatchers(
  * The app-wide objects, made once per process by [BananaChessApplication] and handed to
  * screens through their constructors. Holds nothing tied to an activity or a view.
  *
- * Later additions go here as constructor parameters, made in [create]: the CPU player factory
- * (S19, which runs searches on [AppDispatchers.default]) and the match snapshot store (S20,
- * whose file lives in [ioScope] like the settings).
+ * Later additions go here as constructor parameters, made in [create]: the match snapshot store
+ * (S20, whose file lives in [ioScope] like the settings).
  *
+ * @param cpuOpponent makes the computer a match plays against. Its searches run on
+ *   [AppDispatchers.default].
  * @param ioScope where app-wide files are read and written. It lasts as long as the container.
  */
 class AppContainer(
     val settings: SettingsStore,
     val dispatchers: AppDispatchers = AppDispatchers(),
+    val cpuOpponent: (CpuDifficulty) -> CpuOpponent = CpuOpponent::forDifficulty,
     private val ioScope: CoroutineScope = CoroutineScope(SupervisorJob() + dispatchers.io),
 ) {
     /**

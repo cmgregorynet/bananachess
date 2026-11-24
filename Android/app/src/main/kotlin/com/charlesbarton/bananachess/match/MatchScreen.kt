@@ -21,10 +21,12 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -74,6 +76,7 @@ import kotlin.math.min
 object MatchTags {
     const val SCREEN = "matchScreen"
     const val TURN_INDICATOR = "turnIndicator"
+    const val THINKING = "thinkingIndicator"
     const val ERROR_BANNER = "errorBanner"
     const val RESULT = "resultOverlay"
 }
@@ -185,7 +188,7 @@ fun MatchScreen(
                     modifier = Modifier.weight(1f),
                     above = {
                         ScoreboardView(scoreboard = topScoreboard, seat = state.seat(state.topPlayer))
-                        TurnIndicator(text = state.turnIndicatorText)
+                        TurnIndicator(text = state.turnIndicatorText, isThinking = state.isOpponentThinking)
                         // Once the match is over the scrim covers this spot, so the result
                         // overlay shows the banner instead.
                         if (state.outcome == null) errorBanner()
@@ -368,6 +371,7 @@ private fun MatchLayout(
 @Composable
 private fun TurnIndicator(
     text: String,
+    isThinking: Boolean,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -375,7 +379,14 @@ private fun TurnIndicator(
         horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.CenterHorizontally),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        // The spinner shown while the opponent is thinking goes here, before the text.
+        if (isThinking) {
+            // Decoration: the text beside it already says the computer is thinking.
+            CircularProgressIndicator(
+                modifier = Modifier.size(14.dp).testTag(MatchTags.THINKING).clearAndSetSemantics {},
+                color = Palette.ink,
+                strokeWidth = 2.dp,
+            )
+        }
         Text(
             text = text,
             style = MatchType.turnIndicator,

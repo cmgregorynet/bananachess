@@ -16,8 +16,8 @@ import kotlin.math.min
  * no private path into the game state.
  *
  * [selectAction] is plain synchronous code that can run for as long as the plan's hard
- * time cap, so the caller chooses the thread. A player holds no state between calls and
- * may be shared.
+ * time cap, so the caller chooses the thread, and can end it sooner through `shouldStop`.
+ * A player holds no state between calls and may be shared.
  */
 class CpuPlayer(
     val difficulty: CpuDifficulty,
@@ -38,17 +38,32 @@ class CpuPlayer(
     )
 
     /** Convenience for callers that only care about moves. */
-    fun selectMove(state: GameState): Move? = selectAction(state) as? Move
+    fun selectMove(
+        state: GameState,
+        shouldStop: () -> Boolean = { false },
+    ): Move? = selectAction(state, shouldStop) as? Move
 
-    fun selectAction(state: GameState): GameAction? = analyse(state).action
+    /**
+     * @param shouldStop polled wherever the search checks its clock, from the thread running
+     *   the search. Once it returns true the search ends as if out of time, and what it
+     *   returns is only a best guess, meant to be thrown away by a caller that has stopped
+     *   wanting it.
+     */
+    fun selectAction(
+        state: GameState,
+        shouldStop: () -> Boolean = { false },
+    ): GameAction? = analyse(state, shouldStop).action
 
-    internal fun analyse(state: GameState): Analysis {
+    internal fun analyse(
+        state: GameState,
+        shouldStop: () -> Boolean = { false },
+    ): Analysis {
         val moves = RulesEngine.legalActions(state)
         return when {
             moves.isEmpty() -> Analysis(null, completedDepth = 0, nodes = 0)
             plan.candidateFraction >= 1 -> Analysis(pickAtRandom(moves, state), completedDepth = 0, nodes = 0)
             plan.depth <= 1 -> Analysis(pickShallow(moves, state), completedDepth = 1, nodes = 0)
-            else -> pickBestSearch(moves, state)
+            else -> pickBestSearch(moves, state, shouldStop)
         }
     }
 
@@ -77,6 +92,7 @@ class CpuPlayer(
     private fun pickBestSearch(
         moves: List<GameAction>,
         state: GameState,
+        shouldStop: () -> Boolean,
     ): Analysis {
         val start = clock()
         val softBudget = plan.softTimeBudget.inWholeNanoseconds
@@ -88,6 +104,7 @@ class CpuPlayer(
                 startNanos = start,
                 hardCapNanos = plan.hardTimeCap.inWholeNanoseconds,
                 quiescenceDepth = plan.quiescenceDepth,
+                shouldStop = shouldStop,
             )
 
         var ordered = moves.rankedBy { Search.staticRank(it, state) }
@@ -97,7 +114,7 @@ class CpuPlayer(
         var depth = 2
 
         while (depth <= min(plan.depth, Search.MAXIMUM_DEPTH)) {
-            if (clock() - start >= softBudget) break
+            if (shouldStop() || clock() - start >= softBudget) break
             // Out of time mid-depth: the last fully completed depth stands.
             val result = search.bestMove(state, ordered, depth) ?: break
             best = result.move
