@@ -5,12 +5,12 @@ layer: ui
 points: 3
 depends_on: [S17]
 touches: [Android/app/src/main/kotlin/com/charlesbarton/bananachess/art/BlendEffects.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/AndroidMatchHaptics.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/BoardView.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/MatchScreen.kt, Android/app/src/test/kotlin/com/charlesbarton/bananachess/art/BlendEffectsTest.kt, Android/app/src/test/kotlin/com/charlesbarton/bananachess/match/MatchHapticsTest.kt]
-status: in_progress
+status: done
 branch: slice/android-rewrite/S18
 started: 2026-11-23T17:11
-completed:
-actual_points:
-review_fixes:
+completed: 2026-11-23T17:25
+actual_points: 5
+review_fixes: burst-centre map pruned; name clash fixed
 blocked_reason:
 ---
 
@@ -81,7 +81,12 @@ cd .. && /usr/bin/grep -c "VIBRATE" Android/app/src/main/AndroidManifest.xml || 
 3: animation curves to match by eye, and haptic constants that differ by API level.
 
 ## Actuals
-- **Actual points:**
-- **What took longer / shorter than expected:**
+- **Actual points:** 5. The estimate was 3.
+- **What took longer / shorter than expected:** Longer: keeping a leaving piece drawn after it drops out of the state without a one-frame gap, and the two requirements added mid-slice from the architecture review (view-model-owned effect lifetime; haptics attached and detached by the screen). Shorter: the haptic constants and lint.
 - **Surprises / unknowns that surfaced:**
-- **Review fixes applied:**
+  - Haptics use `View.performHapticFeedback` (no vibrate permission, honours the system setting), with newer constants behind API checks: reject and confirm from API 30, a soft release from API 27, older fallbacks below.
+  - Droplet randomness copies Swift's `Double.random(in:)` draw, so a seed should throw the same pulp as on iOS; there are no Swift reference values to confirm it.
+  - Two curves are approximations of SwiftUI's keyframe ring and its bouncy and snappy springs.
+  - The burst and splatter run on frame clocks, not Compose animations, so the reduced-motion fade is still seen when system animations are off.
+  - Outside `touches` (authorised): `MatchViewModel.kt`, `MatchUiState.kt`, `MatchViewModelTest.kt`.
+- **Review fixes applied:** The screen's map of burst centres is pruned to live bursts so it cannot grow per blend; a private composable renamed to avoid a clash with the `Splatter` data class.
