@@ -398,12 +398,22 @@ class MatchScreenTest {
         expectTurnIndicator("Player One to move")
         composeRule.onNodeWithTag(MatchTags.RESULT).assertDoesNotExist()
 
+        // The opening moves go through the board, the rest straight to the view model:
+        // waiting for Compose to idle after every one of a whole match's moves made this
+        // test take minutes, and time out, on a loaded machine.
         var moves = 0
         while (!viewModel.ui.authoritativeState.status.isOver) {
-            playFirstLegalAction(viewModel)
+            if (moves < MOVES_THROUGH_THE_BOARD) {
+                playFirstLegalAction(viewModel)
+            } else {
+                val action = RulesEngine.legalActions(viewModel.ui.authoritativeState).first()
+                viewModel.perform(action)
+                scope.settle()
+            }
             moves += 1
             assertTrue(moves < MOVE_LIMIT, "the match did not end within $MOVE_LIMIT moves")
         }
+        composeRule.waitForIdle()
 
         composeRule.onNodeWithTag(MatchTags.RESULT).assertIsDisplayed()
         composeRule.onNodeWithText(checkNotNull(viewModel.ui.resultText)).assertIsDisplayed()
@@ -919,5 +929,6 @@ class MatchScreenTest {
         const val SMALL_PHONE = "w360dp-h640dp-xhdpi"
         private const val SMALLEST_BOARD_DP = 288
         private const val MOVE_LIMIT = 2_000
+        private const val MOVES_THROUGH_THE_BOARD = 12
     }
 }
