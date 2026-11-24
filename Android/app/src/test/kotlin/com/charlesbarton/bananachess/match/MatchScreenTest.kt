@@ -97,7 +97,6 @@ class MatchScreenTest {
 
     private fun show(
         viewModel: MatchViewModel,
-        settings: SettingsStore = introductionSeen,
         showsDebugControls: Boolean = false,
         fontScale: Float = 1f,
     ) {
@@ -107,7 +106,6 @@ class MatchScreenTest {
                 PaperTheme {
                     MatchScreen(
                         viewModel = viewModel,
-                        settings = settings,
                         onExit = { exits += 1 },
                         onShowRules = { rulesOpened += 1 },
                         showsDebugControls = showsDebugControls,
@@ -759,7 +757,7 @@ class MatchScreenTest {
     @Test
     fun `the first match opens under the introduction, which hides the match from TalkBack`() {
         val settings = InMemorySettingsStore()
-        show(scope.matchViewModel(), settings = settings)
+        show(scope.matchViewModel(settings = settings))
 
         composeRule.onNodeWithText("Move one piece").assertIsDisplayed()
         composeRule.onNodeWithText("Next").assertIsDisplayed()
@@ -774,6 +772,8 @@ class MatchScreenTest {
         composeRule.waitForIdle()
 
         composeRule.onNodeWithText("Play").assertDoesNotExist()
+        // The write is the view model's, on its own clock.
+        settle()
         assertTrue(settings.current.hasSeenTeachingOverlay)
         node(4, 0).assertIsDisplayed()
         turnIndicator().assertIsDisplayed()
@@ -783,12 +783,14 @@ class MatchScreenTest {
     @Test
     fun `back closes the introduction, records it as seen, and stays in the match`() {
         val settings = InMemorySettingsStore()
-        show(scope.matchViewModel(), settings = settings)
+        show(scope.matchViewModel(settings = settings))
         composeRule.onNodeWithText("Move one piece").assertIsDisplayed()
 
         pressBack()
 
         composeRule.onNodeWithText("Move one piece").assertDoesNotExist()
+        // The write is the view model's, on its own clock.
+        settle()
         assertTrue(settings.current.hasSeenTeachingOverlay)
         assertEquals(0, exits)
         assertFalse(composeRule.activity.isFinishing)

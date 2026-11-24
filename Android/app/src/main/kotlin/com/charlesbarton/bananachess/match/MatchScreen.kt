@@ -2,6 +2,7 @@ package com.charlesbarton.bananachess.match
 
 import android.content.Context
 import android.content.pm.ApplicationInfo
+import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.core.tween
@@ -31,10 +32,8 @@ import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
@@ -66,10 +65,7 @@ import com.charlesbarton.bananachess.art.SplatterView
 import com.charlesbarton.bananachess.art.isReducedMotion
 import com.charlesbarton.bananachess.engine.model.RuleSet
 import com.charlesbarton.bananachess.engine.setup.GameSetup
-import com.charlesbarton.bananachess.rules.FirstMatchTeachingOverlay
-import com.charlesbarton.bananachess.settings.InMemorySettingsStore
-import com.charlesbarton.bananachess.settings.Settings
-import com.charlesbarton.bananachess.settings.SettingsStore
+import com.charlesbarton.bananachess.rules.TeachingOverlay
 import kotlinx.coroutines.delay
 import kotlin.math.max
 import kotlin.math.min
@@ -141,14 +137,13 @@ private object MatchScreenSpec {
 @Composable
 fun MatchScreen(
     viewModel: MatchViewModel,
-    settings: SettingsStore,
     onExit: () -> Unit,
     onShowRules: () -> Unit,
     modifier: Modifier = Modifier,
     showsDebugControls: Boolean = isDebuggable(LocalContext.current),
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
-    var isTeaching by remember { mutableStateOf(false) }
+    val isTeaching = state.isTeachingOverlayShowing
 
     // Left running, a move would finish off screen, and the player would come back to a board
     // that had changed without them seeing how.
@@ -172,6 +167,10 @@ fun MatchScreen(
     // drawing, never in composition, so it need not be observable.
     val burstCentres = remember { HashMap<Long, Offset>() }
 
+    // Rebuilt when the board changes, not on every flash and burst that passes over it.
+    val topScoreboard = remember(state.displayState, state.mode) { state.scoreboard(state.topPlayer) }
+    val bottomScoreboard = remember(state.displayState, state.mode) { state.scoreboard(state.bottomPlayer) }
+
     val errorBanner: @Composable () -> Unit = {
         state.errorMessage?.let { ErrorBanner(message = it, onDismiss = viewModel::dismissError) }
     }
@@ -185,11 +184,8 @@ fun MatchScreen(
                 MatchLayout(
                     modifier = Modifier.weight(1f),
                     above = {
-                        ScoreboardView(
-                            scoreboard = state.scoreboard(state.topPlayer),
-                            seat = state.seat(state.topPlayer),
-                        )
-                        TurnIndicator(state = state)
+                        ScoreboardView(scoreboard = topScoreboard, seat = state.seat(state.topPlayer))
+                        TurnIndicator(text = state.turnIndicatorText)
                         // Once the match is over the scrim covers this spot, so the result
                         // overlay shows the banner instead.
                         if (state.outcome == null) errorBanner()
@@ -211,14 +207,12 @@ fun MatchScreen(
                         )
                     },
                     below = {
-                        ScoreboardView(
-                            scoreboard = state.scoreboard(state.bottomPlayer),
-                            seat = state.seat(state.bottomPlayer),
-                        )
+                        ScoreboardView(scoreboard = bottomScoreboard, seat = state.seat(state.bottomPlayer))
                         // Link play's "send" button belongs here, between the scoreboard and the
                         // controls. Once the match is over, anything here is under the scrim.
                         Controls(
-                            state = state,
+                            canUndo = state.canUndo,
+                            turnNumber = state.displayState.turnNumber,
                             showsDebugControls = showsDebugControls,
                             onRestart = viewModel::requestRestart,
                             onUndo = viewModel::undo,
@@ -246,7 +240,11 @@ fun MatchScreen(
                 }
             }
         }
-        FirstMatchTeachingOverlay(settings = settings, onShowingChange = { isTeaching = it })
+        if (isTeaching) {
+            // Back closes the introduction, exactly as "Play" does, rather than leaving the match.
+            BackHandler(onBack = viewModel::dismissTeachingOverlay)
+            TeachingOverlay(onFinished = viewModel::dismissTeachingOverlay)
+        }
     }
 
     if (state.isShowingRestartConfirmation) {
@@ -369,7 +367,7 @@ private fun MatchLayout(
 
 @Composable
 private fun TurnIndicator(
-    state: MatchUiState,
+    text: String,
     modifier: Modifier = Modifier,
 ) {
     Row(
@@ -379,7 +377,7 @@ private fun TurnIndicator(
     ) {
         // The spinner shown while the opponent is thinking goes here, before the text.
         Text(
-            text = state.turnIndicatorText,
+            text = text,
             style = MatchType.turnIndicator,
             textAlign = TextAlign.Center,
             // Polite, so TalkBack says whose turn it is each time it changes.
@@ -422,7 +420,8 @@ internal fun ErrorBanner(
 
 @Composable
 private fun Controls(
-    state: MatchUiState,
+    canUndo: Boolean,
+    turnNumber: Int,
     showsDebugControls: Boolean,
     onRestart: () -> Unit,
     onUndo: () -> Unit,
@@ -436,9 +435,9 @@ private fun Controls(
     ) {
         PaperButton(text = "Restart", onClick = onRestart)
         if (showsDebugControls) {
-            PaperButton(text = "Undo", onClick = onUndo, enabled = state.canUndo)
+            PaperButton(text = "Undo", onClick = onUndo, enabled = canUndo)
             // The turn count is the stall metric to watch during playtesting.
-            Text(text = "t${state.displayState.turnNumber}", style = MatchType.turnCount)
+            Text(text = "t$turnNumber", style = MatchType.turnCount)
         }
     }
 }
@@ -446,9 +445,8 @@ private fun Controls(
 @Preview(widthDp = 360, heightDp = 640)
 @Composable
 private fun MatchScreenPreview() {
-    val viewModel = remember { MatchViewModel(MatchMode.LocalVersus, GameSetup.newGame(ruleSet = RuleSet.Wildcard)) }
-    val settings = remember { InMemorySettingsStore(Settings(hasSeenTeachingOverlay = true)) }
+    val viewModel = remember { previewMatchViewModel(GameSetup.newGame(ruleSet = RuleSet.Wildcard)) }
     PaperTheme {
-        MatchScreen(viewModel = viewModel, settings = settings, onExit = {}, onShowRules = {})
+        MatchScreen(viewModel = viewModel, onExit = {}, onShowRules = {})
     }
 }

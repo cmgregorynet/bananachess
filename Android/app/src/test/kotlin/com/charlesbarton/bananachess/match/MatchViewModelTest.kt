@@ -18,6 +18,12 @@ import com.charlesbarton.bananachess.engine.model.WinReason
 import com.charlesbarton.bananachess.engine.rules.RulesEngine
 import com.charlesbarton.bananachess.engine.rules.applying
 import com.charlesbarton.bananachess.engine.setup.GameSetup
+import com.charlesbarton.bananachess.settings.InMemorySettingsStore
+import com.charlesbarton.bananachess.settings.Settings
+import com.charlesbarton.bananachess.settings.SettingsStore
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
 import org.junit.Test
@@ -1068,6 +1074,79 @@ class MatchViewModelTest {
             assertFalse(link.ui.canUndo)
             assertTrue(link.ui.isInputLocked)
             assertTrue(matchViewModel().ui.canPlayAgain)
+        }
+
+    // The first-match introduction
+
+    /** Settings that are still being read until [arrive] is called. */
+    private class SlowSettingsStore : SettingsStore {
+        private val stored = MutableStateFlow<Settings?>(null)
+        override val settings: Flow<Settings> = stored.filterNotNull()
+
+        fun arrive(settings: Settings) {
+            stored.value = settings
+        }
+
+        override suspend fun update(transform: (Settings) -> Settings) {
+            stored.value = transform(stored.value ?: Settings())
+        }
+    }
+
+    @Test
+    fun `a first-ever match opens under the introduction`() =
+        runTest {
+            val viewModel = matchViewModel(settings = InMemorySettingsStore())
+
+            assertTrue(viewModel.ui.isTeachingOverlayShowing)
+        }
+
+    @Test
+    fun `closing the introduction records it as seen, and the next match does not show it`() =
+        runTest {
+            val store = InMemorySettingsStore()
+            val first = matchViewModel(settings = store)
+
+            first.dismissTeachingOverlay()
+
+            assertFalse(first.ui.isTeachingOverlayShowing, "it closes on the call, before the write lands")
+            settle()
+            assertTrue(store.current.hasSeenTeachingOverlay)
+            assertFalse(matchViewModel(settings = store).ui.isTeachingOverlayShowing)
+        }
+
+    @Test
+    fun `a returning player never sees the introduction, even while the settings are being read`() =
+        runTest {
+            val store = SlowSettingsStore()
+            val viewModel = matchViewModel(settings = store)
+            assertFalse(viewModel.ui.isTeachingOverlayShowing, "nothing is shown before the settings arrive")
+
+            store.arrive(Settings(hasSeenTeachingOverlay = true))
+            settle()
+
+            assertFalse(viewModel.ui.isTeachingOverlayShowing)
+        }
+
+    @Test
+    fun `a first-time player sees the introduction once the settings arrive`() =
+        runTest {
+            val store = SlowSettingsStore()
+            val viewModel = matchViewModel(settings = store)
+
+            store.arrive(Settings())
+            settle()
+
+            assertTrue(viewModel.ui.isTeachingOverlayShowing)
+        }
+
+    @Test
+    fun `restarting under the introduction keeps it up`() =
+        runTest {
+            val viewModel = matchViewModel(settings = InMemorySettingsStore())
+
+            viewModel.restart()
+
+            assertTrue(viewModel.ui.isTeachingOverlayShowing)
         }
 
     private companion object {

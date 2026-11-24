@@ -135,6 +135,46 @@ class BoardViewTest {
     // region Accessibility structure
 
     @Test
+    fun `a flash, a burst or a splatter over the board does not describe the squares again`() {
+        var described = 0
+        val viewModel = scope.matchViewModel()
+        var ui by mutableStateOf(viewModel.ui)
+        composeRule.setContent {
+            Frame {
+                BoardView(
+                    state = ui,
+                    onSquareTap = {},
+                    modifier = Modifier.size(BOARD),
+                    describeSquare = { position ->
+                        described += 1
+                        squareDescription(position)
+                    },
+                )
+            }
+        }
+        composeRule.waitForIdle()
+        assertEquals(Board.SIZE * Board.SIZE, described)
+
+        ui = ui.copy(flash = BoardFlash(id = 1, text = "+1", position = square(3, 0)))
+        composeRule.waitForIdle()
+        ui =
+            ui.copy(
+                blendBursts = listOf(BlendBurst(id = 2, kind = PieceKind.Banana, position = square(3, 0), seed = 1uL)),
+            )
+        composeRule.waitForIdle()
+        ui = ui.copy(splatter = Splatter(id = 3, burstId = 2, kind = PieceKind.Banana, seed = 2uL), flash = null)
+        composeRule.waitForIdle()
+        assertEquals(Board.SIZE * Board.SIZE, described, "only the effects changed")
+
+        // A selection is something the descriptions say, so it does describe them again.
+        viewModel.tap(square(4, 0))
+        ui = viewModel.ui
+        composeRule.waitForIdle()
+        assertEquals(2 * Board.SIZE * Board.SIZE, described)
+        assertTrue("legal move" in description(square(3, 0)))
+    }
+
+    @Test
     fun `the standard opening has thirty-six labelled buttons, one per square`() {
         val ui = scope.matchViewModel().ui
         show(ui)

@@ -16,8 +16,6 @@ import com.charlesbarton.bananachess.engine.model.Outcome
 import com.charlesbarton.bananachess.engine.model.PieceId
 import com.charlesbarton.bananachess.engine.model.PieceKind
 import com.charlesbarton.bananachess.engine.model.PlayerId
-import com.charlesbarton.bananachess.settings.InMemorySettingsStore
-import com.charlesbarton.bananachess.settings.Settings
 import kotlinx.coroutines.test.TestScope
 import org.junit.Rule
 import org.junit.Test
@@ -148,7 +146,6 @@ class MatchHapticsTest {
                 if (showing) {
                     MatchScreen(
                         viewModel = viewModel,
-                        settings = InMemorySettingsStore(Settings(hasSeenTeachingOverlay = true)),
                         onExit = {},
                         onShowRules = {},
                     )

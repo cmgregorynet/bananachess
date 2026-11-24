@@ -152,6 +152,8 @@ data class MatchUiState(
     val errorMessage: String? = null,
     val isShowingRestartConfirmation: Boolean = false,
     val hasUndoHistory: Boolean = false,
+    /** The first-match introduction, over everything else, until the player closes it. */
+    val isTeachingOverlayShowing: Boolean = false,
 ) {
     // Board geometry
 

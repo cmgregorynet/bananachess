@@ -103,6 +103,7 @@ fun newMatchViewModel(
     MatchViewModel(
         mode = start.mode,
         initialState = start.state,
+        settings = container.settings,
         reduceMotion = reduceMotion,
         scope = CoroutineScope(SupervisorJob() + container.dispatchers.main),
     )
@@ -158,7 +159,6 @@ fun BananaChessApp(
                     )
                 MatchScreen(
                     viewModel = matchViewModel,
-                    settings = container.settings,
                     // By type, so a second press during the way out cannot pop Home too.
                     onExit = { navController.popBackStack<Route.Match>(inclusive = true) },
                     onShowRules = { navController.navigate(Route.Rules) { launchSingleTop = true } },
