@@ -5,12 +5,12 @@ layer: ui
 points: 2
 depends_on: [S27, S09]
 touches: [Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/MatchViewModel.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/MatchUiState.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/MatchScreen.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/BananaChessApp.kt, Android/app/src/test/kotlin/com/charlesbarton/bananachess/match/CpuPlayTest.kt, Android/engine/src/main/kotlin/com/charlesbarton/bananachess/engine/cpu/, Android/engine/src/test/kotlin/com/charlesbarton/bananachess/engine/cpu/, Android/app/src/main/kotlin/com/charlesbarton/bananachess/AppContainer.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/MatchSource.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/BananaChessApp.kt]
-status: todo
-branch:
-started:
-completed:
-actual_points:
-review_fixes:
+status: done
+branch: slice/android-rewrite/S19
+started: 2026-11-23T20:26
+completed: 2026-11-23T20:38
+actual_points: 2
+review_fixes: quiet-move tests; stop tests wait for search start
 blocked_reason:
 ---
 
@@ -79,7 +79,11 @@ cd .. && /usr/bin/grep -rn --include='*.kt' "GlobalScope" Android/app/src/main |
 2: a small amount of code in a place where threading mistakes are easy; the tests are the work.
 
 ## Actuals
-- **Actual points:**
-- **What took longer / shorter than expected:**
-- **Surprises / unknowns that surfaced:**
-- **Review fixes applied:**
+- **Estimate vs actual:** 2 → 2. Route wiring was one line (S13/S15/S26 had the pieces); keeping existing Computer-mode tests deterministic and the real-thread tests took the time.
+- **What shipped:** `fun interface CpuOpponent { selectAction(state, shouldStop) }` with `CpuOpponent.forDifficulty`; `MatchViewModel(..., scope, cpuDispatcher = Dispatchers.Default, cpuOpponent)`; `AppContainer.cpuOpponent`. `CpuPlayer.selectAction/selectMove/analyse` take `shouldStop` per call, polled at both clock checks. CPU turns start at construction, end of `finishTimeline()`, `restart()` and `undo()`; ≥320 ms thinking; input locked; replies held while inactive; identity-based stale-reply guard. `MatchTags.THINKING` spinner (hidden from TalkBack).
+- **Deliberate difference from iOS:** `undo()` restarts the CPU when the restored position has it to move (iOS gets stuck; undo is debug-only).
+- **Review fixes:** tests use a quiet move (first legal move can be a self-blend); doc wording.
+- **Outside touches:** `MatchTestSupport.kt` (`cpuOpponent` defaulting to `passingCpu` on the test dispatcher), one `settle()` in `MatchViewModelTest.kt`.
+- **Verification:** merged tree, no cache — engine tests, app tests, lint, ktlint, assembleDebug; GlobalScope grep 0. Mutation check: disabling the stale guard and shouldStop failed 3 tests.
+- **Notes for S20/S21:** a restored view model gets its CPU turn on construction; put save-on-move next to `startCpuTurnIfNeeded()` call sites. An incoming link move through `perform` would drop a pending CPU reply (harmless: link matches have no CPU).
+- **Orchestrator fix:** `fix(S19)` — the stop tests now wait for the search to start; cancelling before it began made them fail under load on the merged tree.
