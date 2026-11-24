@@ -17,8 +17,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
+import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.draw.drawWithCache
@@ -35,7 +39,10 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.drawscope.scale
+import androidx.compose.ui.layout.boundsInRoot
 import androidx.compose.ui.layout.layout
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.Role
@@ -45,16 +52,22 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import com.charlesbarton.bananachess.art.BlendBurstView
 import com.charlesbarton.bananachess.art.Palette
 import com.charlesbarton.bananachess.art.PaperTheme
 import com.charlesbarton.bananachess.art.PieceArtwork
 import com.charlesbarton.bananachess.art.PlayerSeat
+import com.charlesbarton.bananachess.art.Pulped
+import com.charlesbarton.bananachess.art.isReducedMotion
 import com.charlesbarton.bananachess.art.paperGrain
+import com.charlesbarton.bananachess.art.pulped
 import com.charlesbarton.bananachess.engine.model.Board
 import com.charlesbarton.bananachess.engine.model.BoardWrap
+import com.charlesbarton.bananachess.engine.model.PieceId
 import com.charlesbarton.bananachess.engine.model.PieceKind
 import com.charlesbarton.bananachess.engine.model.Position
 import com.charlesbarton.bananachess.engine.setup.GameSetup
+import kotlinx.coroutines.delay
 import kotlin.math.PI
 import kotlin.math.ceil
 import kotlin.math.min
@@ -108,13 +121,20 @@ internal fun Position.displayed(isRotated: Boolean): Position =
  * bounds and a flash can reach past its edge, so leave room around it and do not clip it.
  *
  * @param onSquareTap called with the square's engine position, whichever way up the board is.
+ * @param onBurstPlaced called with a burst's id and the centre of its square in root coordinates
+ *   whenever it is laid out, so a splatter knows where on screen its fruit was standing.
+ * @param onBurstFinished called with a burst's id once [BlendBurst.LIFETIME_MILLIS] have passed.
  */
 @Composable
 fun BoardView(
     state: MatchUiState,
     onSquareTap: (Position) -> Unit,
     modifier: Modifier = Modifier,
+    onBurstPlaced: (id: Long, centreInRoot: Offset) -> Unit = { _, _ -> },
+    onBurstFinished: (id: Long) -> Unit = {},
 ) {
+    val context = LocalContext.current
+    val reduceMotion = remember(context) { isReducedMotion(context) }
     // A chess board does not mirror for right-to-left languages: column 0 is always on the same
     // side for both players.
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
@@ -124,11 +144,16 @@ fun BoardView(
                 Squares(state = state, onSquareTap = onSquareTap, modifier = Modifier.fillMaxSize())
                 JoinedEdges(wrap = state.displayState.boardWrap, modifier = Modifier.fillMaxSize())
                 KnockedOutBlenders(state = state)
-                Pieces(state = state)
+                Pieces(state = state, reduceMotion = reduceMotion)
             }
-            // Outside the clip, so a label on an edge square is not sliced off by the border.
-            // Anything else that must spill past the board (pulp from a blend) belongs here too,
-            // placed on its square with Modifier.boardCell.
+            // Outside the clip, so pulp and a label on an edge square are not sliced off by the
+            // border.
+            Bursts(
+                state = state,
+                reduceMotion = reduceMotion,
+                onBurstPlaced = onBurstPlaced,
+                onBurstFinished = onBurstFinished,
+            )
             FlashPill(flash = state.flash, isRotated = state.isRotated, modifier = Modifier.fillMaxSize())
         }
     }
@@ -354,37 +379,92 @@ private fun FadingIn(
 
 private fun fadePaint(alpha: Float) = Paint().apply { this.alpha = alpha }
 
+/** How a piece is drawn on the board, kept so it can still be drawn while it leaves. */
+private data class PieceLook(
+    val kind: PieceKind,
+    val seat: PlayerSeat,
+    val isGolden: Boolean,
+    val cell: Offset,
+)
+
+/**
+ * What the board last showed and what is still on its way out. Changed only after a composition
+ * is applied, so a composition that is thrown away changes nothing.
+ */
+private class PieceMemory {
+    var shown: Map<PieceId, PieceLook>? = null
+    val leaving = mutableStateMapOf<PieceId, PieceLook>()
+}
+
 @Composable
-private fun Pieces(state: MatchUiState) {
-    for (piece in state.piecesOnBoard) {
-        val position = piece.position
-        if (position != null) {
-            // Keyed by the piece, not the square, so a move slides the same drawing along.
-            key(piece.id) {
-                BoardPiece(
-                    kind = piece.kind,
-                    seat = state.seat(piece.owner),
-                    isGolden = state.displayState.isGolden(piece.id),
-                    isSelected = state.selectedPieceId == piece.id,
-                    cell = position.displayed(state.isRotated).cellOffset,
-                )
-            }
+private fun Pieces(
+    state: MatchUiState,
+    reduceMotion: Boolean,
+) {
+    val onBoard =
+        state.piecesOnBoard
+            .mapNotNull { piece ->
+                piece.position?.let { position ->
+                    piece.id to
+                        PieceLook(
+                            kind = piece.kind,
+                            seat = state.seat(piece.owner),
+                            isGolden = state.displayState.isGolden(piece.id),
+                            cell = position.displayed(state.isRotated).cellOffset,
+                        )
+                }
+            }.toMap()
+    val memory = remember { PieceMemory() }
+    val shown = memory.shown
+    val departed = shown.orEmpty().filterKeys { it !in onBoard }
+    val leaving = memory.leaving.filterKeys { it !in onBoard } + departed
+    SideEffect {
+        memory.shown = onBoard
+        for ((id, look) in departed) if (memory.leaving[id] != look) memory.leaving[id] = look
+        for (id in memory.leaving.keys.filter { it in onBoard }) memory.leaving.remove(id)
+    }
+
+    for ((id, look) in onBoard + leaving) {
+        // Keyed by the piece, not the square, so a move slides the same drawing along and a
+        // piece that leaves is spun off by the same drawing that stood there.
+        key(id) {
+            BoardPiece(
+                look = look,
+                isSelected = state.selectedPieceId == id,
+                // Nothing animates in the first time the board is shown.
+                arrives = shown != null && id !in shown,
+                isLeaving = id in leaving,
+                reduceMotion = reduceMotion,
+                onGone = { memory.leaving.remove(id) },
+            )
         }
     }
 }
 
 /**
- * One piece, sliding to [cell] whenever that changes. Not clickable and with no semantics: the
- * square underneath owns the tap and the description.
+ * One piece, sliding to its cell whenever that changes, growing in when it [arrives] and pulped
+ * off when it [isLeaving]. Not clickable and with no semantics: the square underneath owns the
+ * tap and the description.
  */
 @Composable
 private fun BoardPiece(
-    kind: PieceKind,
-    seat: PlayerSeat,
-    isGolden: Boolean,
+    look: PieceLook,
     isSelected: Boolean,
-    cell: Offset,
+    arrives: Boolean,
+    isLeaving: Boolean,
+    reduceMotion: Boolean,
+    onGone: () -> Unit,
 ) {
+    val cell = look.cell
+    val presence = remember { Animatable(if (arrives) 0f else 1f) }
+    LaunchedEffect(isLeaving) {
+        if (isLeaving) {
+            presence.animateTo(0f, Pulped.exitSpec(look.kind, reduceMotion))
+            onGone()
+        } else {
+            presence.animateTo(1f, Pulped.enterSpec(reduceMotion))
+        }
+    }
     val place = remember { Animatable(cell, Offset.VectorConverter) }
     // With animations turned off in the system settings the spring finishes at once, which is
     // the reduced-motion behaviour wanted here: the piece is simply on its new square.
@@ -400,11 +480,12 @@ private fun BoardPiece(
         )
     }
     PieceArtwork(
-        kind = kind,
-        seat = seat,
+        kind = look.kind,
+        seat = look.seat,
         modifier =
             Modifier
                 .boardCell { place.value }
+                .pulped(presence = { presence.value }, isLeaving = isLeaving, reduceMotion = reduceMotion)
                 .drawWithContent {
                     scale(if (isSelected) BoardViewSpec.SELECTED_SCALE else 1f) {
                         this@drawWithContent.drawContent()
@@ -418,8 +499,39 @@ private fun BoardPiece(
                         )
                     }
                 },
-        isGolden = isGolden,
+        isGolden = look.isGolden,
     )
+}
+
+/**
+ * Pulp thrown at each square where something was just blended, drawn over the board and past
+ * its edge. Each burst tells the view model when it is done; it would be retired anyway.
+ */
+@Composable
+private fun Bursts(
+    state: MatchUiState,
+    reduceMotion: Boolean,
+    onBurstPlaced: (id: Long, centreInRoot: Offset) -> Unit,
+    onBurstFinished: (id: Long) -> Unit,
+) {
+    for (burst in state.blendBursts) {
+        key(burst.id) {
+            val finished by rememberUpdatedState(onBurstFinished)
+            LaunchedEffect(Unit) {
+                delay(BlendBurst.LIFETIME_MILLIS)
+                finished(burst.id)
+            }
+            BlendBurstView(
+                kind = burst.kind,
+                seed = burst.seed,
+                reduceMotion = reduceMotion,
+                modifier =
+                    Modifier
+                        .boardCell(burst.position, state.isRotated)
+                        .onGloballyPositioned { onBurstPlaced(burst.id, it.boundsInRoot().center) },
+            )
+        }
+    }
 }
 
 // endregion

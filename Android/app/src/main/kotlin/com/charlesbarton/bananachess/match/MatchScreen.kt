@@ -27,14 +27,22 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.layout.positionInRoot
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.clearAndSetSemantics
@@ -54,12 +62,15 @@ import com.charlesbarton.bananachess.art.Palette
 import com.charlesbarton.bananachess.art.PaperBackground
 import com.charlesbarton.bananachess.art.PaperButton
 import com.charlesbarton.bananachess.art.PaperTheme
+import com.charlesbarton.bananachess.art.SplatterView
+import com.charlesbarton.bananachess.art.isReducedMotion
 import com.charlesbarton.bananachess.engine.model.RuleSet
 import com.charlesbarton.bananachess.engine.setup.GameSetup
 import com.charlesbarton.bananachess.rules.FirstMatchTeachingOverlay
 import com.charlesbarton.bananachess.settings.InMemorySettingsStore
 import com.charlesbarton.bananachess.settings.Settings
 import com.charlesbarton.bananachess.settings.SettingsStore
+import kotlinx.coroutines.delay
 import kotlin.math.max
 import kotlin.math.min
 
@@ -146,6 +157,21 @@ fun MatchScreen(
         onPauseOrDispose { viewModel.onSceneInactive() }
     }
 
+    // Handed over only while this screen is composed: the haptics hold the view, and the view
+    // model outlives the activity.
+    val view = LocalView.current
+    DisposableEffect(viewModel, view) {
+        val haptics = AndroidMatchHaptics(view)
+        viewModel.attachHaptics(haptics)
+        onDispose { viewModel.detachHaptics(haptics) }
+    }
+
+    val context = LocalContext.current
+    val reduceMotion = remember(context) { isReducedMotion(context) }
+    // Where each burst's square is on screen, for the splatter it may have thrown. Read while
+    // drawing, never in composition, so it need not be observable.
+    val burstCentres = remember { HashMap<Long, Offset>() }
+
     val errorBanner: @Composable () -> Unit = {
         state.errorMessage?.let { ErrorBanner(message = it, onDismiss = viewModel::dismissError) }
     }
@@ -168,7 +194,22 @@ fun MatchScreen(
                         // overlay shows the banner instead.
                         if (state.outcome == null) errorBanner()
                     },
-                    board = { BoardView(state = state, onSquareTap = viewModel::tap) },
+                    board = {
+                        BoardView(
+                            state = state,
+                            onSquareTap = viewModel::tap,
+                            onBurstPlaced = { id, centre ->
+                                // The view model may retire a burst before the board says it is done.
+                                val wanted = state.blendBursts.map { it.id } + listOfNotNull(state.splatter?.burstId)
+                                burstCentres.keys.retainAll(wanted.toSet())
+                                burstCentres[id] = centre
+                            },
+                            onBurstFinished = { id ->
+                                burstCentres.remove(id)
+                                viewModel.retireBurst(id)
+                            },
+                        )
+                    },
                     below = {
                         ScoreboardView(
                             scoreboard = state.scoreboard(state.bottomPlayer),
@@ -193,7 +234,17 @@ fun MatchScreen(
             ) {
                 ResultOverlay(state = state, onPlayAgain = viewModel::restart, onDone = onExit, notice = errorBanner)
             }
-            // The splatter is drawn here: over the result, under the introduction, taking no touches.
+            // Over the result, under the introduction. It has no semantics and takes no touches.
+            state.splatter?.let { splatter ->
+                key(splatter.id) {
+                    SplatterOverlay(
+                        splatter = splatter,
+                        reduceMotion = reduceMotion,
+                        originInRoot = { burstCentres[splatter.burstId] },
+                        onFinished = { viewModel.retireSplatter(splatter.id) },
+                    )
+                }
+            }
         }
         FirstMatchTeachingOverlay(settings = settings, onShowingChange = { isTeaching = it })
     }
@@ -208,6 +259,28 @@ fun MatchScreen(
             onCancel = viewModel::cancelSelfBlend,
         )
     }
+}
+
+@Composable
+private fun SplatterOverlay(
+    splatter: Splatter,
+    reduceMotion: Boolean,
+    originInRoot: () -> Offset?,
+    onFinished: () -> Unit,
+) {
+    val finished by rememberUpdatedState(onFinished)
+    LaunchedEffect(Unit) {
+        delay(Splatter.LIFETIME_MILLIS)
+        finished()
+    }
+    val topLeft = remember { arrayOf(Offset.Zero) }
+    SplatterView(
+        kind = splatter.kind,
+        seed = splatter.seed,
+        reduceMotion = reduceMotion,
+        origin = { originInRoot()?.minus(topLeft[0]) },
+        modifier = Modifier.fillMaxSize().onGloballyPositioned { topLeft[0] = it.positionInRoot() },
+    )
 }
 
 private fun isDebuggable(context: Context): Boolean =
