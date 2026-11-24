@@ -629,3 +629,185 @@ Specific things to check first on device:
 
 **Bundle identifier is `com.charlesbarton.bananachess`** and `DEVELOPMENT_TEAM` is
 unset — change both before any device build.
+
+## Android
+
+`Android/` is a native app that plays the same game as the iPhone, built to
+`plans/android-rewrite/`. The notes below are the calls that are not obvious from the code,
+and every place it deliberately behaves differently from iOS.
+
+**A hand port in Kotlin, not the Swift engine compiled for Android, and not Kotlin
+Multiplatform.** Compiling Swift for Android needs a separate toolchain, a JNI bridge and a
+larger APK, and is hard to debug; Kotlin Multiplatform would have meant rewriting the iOS
+engine dependency too. A hand port is native, debuggable, and runs in plain JVM unit tests,
+which is the approach that already works for the web port. What makes it safe is that the
+Swift engine writes down its own behaviour: the port replays all 108 conformance games
+(13,829 moves) and fails on the first legal-move list, event, board, score, turn number or
+outcome that differs. The exactness rules a reading of the prose would miss — SplitMix64,
+Swift's `next(upperBound:)` and its forward Fisher-Yates shuffle, FNV-1a position keys,
+battle dice from unsigned 64-bit modulo, canonical action order — are all pinned by data.
+
+**The golden fixture pins what the conformance fixture cannot.** The conformance games say
+where every piece ends up; they do not say what a match looks like as bytes, and a link
+sent from an iPhone has to open on Android. `Engine/Sources/GoldenFixtures` writes 146
+positions from 18 games with the exact payload JSON and `bananachess://` link the Swift
+engine produces, both 64-bit position hashes (`boardKey` drives the repetition rule,
+`positionKey` seeds battle dice) and the CPU evaluation for each player. Kotlin re-encodes
+every payload byte for byte. It is how the port learned that Apple's `.zlib` compression is
+raw DEFLATE with no zlib header, and that `boardHistory` values run past `Long.MAX_VALUE`.
+Kotlin-made links were also decoded and re-encoded identically by the Swift engine once,
+by hand; that check is not committed.
+
+**Two Gradle modules and feature folders, not a module per feature.** `:engine` is pure
+Kotlin/JVM and may not import `android.*` or `androidx.*`, which makes "no UI in the rules"
+structural, as the Swift package does for iOS. `:app` is one module with folders by feature
+(`art/`, `home/`, `match/`, `link/`, `rules/`, `settings/`). At this size more modules buy
+build-graph overhead and nothing else.
+
+**Online play is by link only.** There is no Game Center on Android and no equivalent that
+also reaches iPhones, and this repo has no server to depend on (the web room server speaks
+its own protocol and keeps matches only in memory). A link needs nothing hosted and works
+between Android and iOS today, because both read and write the same payload. So Android has
+no live rooms and no lobby. Only the `bananachess://` scheme is registered, as on iOS.
+
+**Compose tests run on the JVM under Robolectric.** When the port started, the toolchain was
+command-line only, with no emulator, so every UI test had to run without a device.
+Robolectric's native graphics render real pixels, so the design system and pieces have
+pixel tests as well as semantics tests. It simulates API 35, because Robolectric needs Java
+21 for API 36 and later and the project builds on JDK 17. An emulator has since been
+installed on this Mac, but the tests stay on the JVM; on-device instrumented tests are
+deferred.
+
+**The architecture review.** Partway through the port an independent review held the code
+to the standard of a top-tier consumer Android team. It found one structural problem, which
+was fixed, and a few smaller ones:
+
+- **One container.** `AppContainer`, owned by the `Application`, builds the settings store,
+  the snapshot store, the CPU opponent and the named dispatchers, and owns the IO scope they
+  share. View models take their dependencies through constructors with production defaults.
+  The container has a `close()`, which matters only under Robolectric: each test gets a new
+  `Application`, and a DataStore whose scope never ended deadlocked a later test.
+- **The Match route carries its source.** Matches were first handed to the Match screen
+  through an in-memory holder, so process death lost them. `Route.Match` now carries a
+  `MatchSource` — a new match with every option spelled out (seed included, and no defaults,
+  so a later default cannot change a saved match), the saved match, or a link — which the
+  system can restore. A test simulates process death by parcelling the navigation state and
+  rebuilding the app around it.
+- **The view model owns the overlay and the effects.** The teaching overlay's state lives in
+  `MatchViewModel`, and no composable is handed the settings store. Blend effects live as
+  long as the view model says, and haptics are attached and detached by the screen so they
+  cannot leak the activity.
+- **Compose stability.** `app/compose-stability.conf` tells the Compose compiler that the
+  engine's model types are immutable, since `:engine` is compiled without it. The board's
+  layers are each handed only what they draw, so a flash passing over the board does not
+  recompose the squares; a test counts how often the square descriptions are rebuilt.
+- **A cancellable CPU search.** The search polls a `shouldStop` callback, and a reply that
+  arrives for a position the board has since left is dropped.
+
+Deliberately not done, because they pay off only at a scale this app does not have: feature
+modules, a dependency-injection framework, a domain or use-case layer, binary-compatibility
+checks on `:engine`, and screenshot tests.
+
+### Where Android differs from iOS on purpose
+
+**Android reads the resume snapshot.** iOS writes `current-match.json` after every move and
+never reads it. Android saves the same shape of snapshot and offers "Resume match" on Home.
+It saves in `perform()`, as soon as the rules have decided a move rather than once its
+animation has played out, so a move made just before the app is backgrounded, or a computer
+reply that lands while it is away, is never lost. A finished match clears the snapshot
+instead of saving it. A snapshot that cannot be read, is corrupt or is from another rules
+version is deleted silently; resume is best-effort.
+
+**Teaching page 4 is corrected.** The iOS overlay still says colliding blenders both explode
+and return after two turns, which stopped being the rule several versions ago. Android's
+page 4 reads: "Run a blender into another and it destroys that one outright. A lost blender
+never comes back on its own: buying it back costs a turn and three points." Every other
+string on the rules screen and overlay is the iOS copy.
+
+**Link errors are shown, over whatever screen is up.** A link that is not a match, is
+damaged, is from a newer or older version, or is older than the match already on the phone
+raises "Can't open that match" with the specific reason. The alert is hosted at app level,
+so it appears over Home, a match in progress or Rules, and leaves the current screen as it
+was. A good link opens over whatever is showing.
+
+**Links carry the last move, and Android plays it out.** Android writes `lastMove` into the
+links it sends. When it opens a link and its saved snapshot is exactly the position before
+that move, it animates the move from there; otherwise it opens on the result. iOS ignores
+`lastMove`, so links stay compatible in both directions. After process death the saved
+position is the result, so the move is not replayed, as on iOS.
+
+**Restart is hidden in link play.** A restart deals the match again under the same id at
+move zero, and the opponent's phone would then refuse the next link as stale. The view model
+refuses it too.
+
+**Undo restarts the computer when it is the computer's turn.** On iOS, undoing back to a
+position where the CPU is to move leaves it sitting. Undo is debug-only on both.
+
+**Engine refusals are shown.** iOS stores the error when the engine refuses an action and
+never displays it. Android shows it as a dismissible banner under the turn indicator,
+including over the result overlay. The board only offers legal moves, so this should never
+appear.
+
+**Wrap seams are drawn above the squares.** By a reading of `BoardView.swift`, the dashed
+seams sit beneath 36 opaque squares on iOS and may be hidden. Android draws them on top so
+they are always visible. Not confirmed on an iPhone.
+
+**The flash pill is kept inside the board.** With the exact iOS offsets, a long label on the
+right-hand columns runs off the board's edge; Android clamps it.
+
+**Smaller differences in the match view model.** The "Tropical Smoothie!" label is placed
+from blender positions read before the event is applied (on iOS it always lands on the
+row 0, column 0, because the blenders have already left the board). Taps are ignored while a self-blend
+confirmation is open. Events that arrive while the timeline is playing join its queue,
+where iOS cancels and restarts. Restart and undo also clear a pending self-blend.
+
+**The codec checks versions before decoding the rest.** A payload from a future schema with a
+different shape is reported as "newer version" rather than "damaged". Kotlin also refuses
+non-integer numbers where the schema has integers, re-sorts pieces that arrive out of order,
+and refuses links over 65,536 characters, inflation past 1 MiB, off-board squares, duplicate
+piece ids and two pieces on one square. Like iOS, it does not check that a position is
+honestly reachable.
+
+### Deferred on Android
+
+- **`https://` App Links.** They need a hosted domain and `assetlinks.json`; see `docs/`.
+- **A Play Store release.** `Android/scripts/release.sh` builds a shrunk release APK and
+  bundle, signed when the four `BANANA_KEYSTORE*` values are set and unsigned otherwise. No
+  key, listing or upload exists.
+- **Sound.** iOS has none either.
+- **A dark theme**, for the same reason as on iOS.
+- **Tablets and landscape.** The app is a portrait phone layout.
+- **On-device instrumented tests**, and screenshot tests.
+- **Painted sprites.** The drawable lookup is in place, as on iOS; there is no art for it.
+
+The computer's search is bounded by wall-clock time, so on a slow phone it stays responsive
+but sees less deep and plays weaker. That is accepted, and is also true on iOS.
+
+### Known open items
+
+**A possible test flake.** `ScaffoldTest.skipTheIntroduction` hung once while the release
+unit tests were being set up, probably in DataStore under Robolectric. It did not reproduce
+in five reruns.
+
+**Driving `MainActivity` in tests.** Use `Robolectric.buildActivity(…).setup()` inside
+`AndroidComposeTestRule(activityRule = …)`, as `link/LinkUiTest.kt` does. Never call
+`ActivityScenario.launch` in a test body: closing it deadlocks under the Compose rule.
+
+**The release build has not been recorded as checked on a device.** R8 was checked by
+reading the mapping. The first device run should cover a computer match, killing the app and
+resuming, and opening a link.
+
+## Found while porting
+
+Issues the Android port uncovered in the iOS app and the web port. None is fixed here.
+
+- **iOS resume never reads its snapshot.** `MatchSnapshotStore.load()` is never called, so
+  the snapshot written after every move is never used.
+- **iOS never shows match errors.** `MatchViewModel.errorMessage` is set when the engine
+  refuses an action and nothing displays it.
+- **iOS teaching page 4 is stale.** `RulesView.swift` still describes blenders that both
+  explode and return after two turns.
+- **`Web/README.md` has stale counts.** It describes `fixtures/conformance.json` as 36
+  games and nearly 5,000 moves; it is 108 games and 13,829 moves.
+- **The root `README.md` had stale Swift test counts** (106 and 120). The suite has 171;
+  corrected with this note.
