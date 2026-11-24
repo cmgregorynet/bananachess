@@ -32,7 +32,12 @@ data class BlendBurst(
     val kind: PieceKind,
     val position: Position,
     val seed: ULong,
-)
+) {
+    companion object {
+        /** How long a burst stays on the board: its animation and a little to spare. */
+        const val LIFETIME_MILLIS = 750L
+    }
+}
 
 /**
  * The occasional splatter that clears the board. Tied to the burst that threw it so the
@@ -43,7 +48,12 @@ data class Splatter(
     val burstId: Long,
     val kind: PieceKind,
     val seed: ULong,
-)
+) {
+    companion object {
+        /** How long a splatter stays on screen, drying included. */
+        const val LIFETIME_MILLIS = 1_700L
+    }
+}
 
 /**
  * Where a self-blend sits relative to Blenderama, which is the only reason to make one that

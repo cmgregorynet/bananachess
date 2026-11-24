@@ -1,6 +1,7 @@
 package com.charlesbarton.bananachess.match
 
 import androidx.lifecycle.ViewModel
+import androidx.lifecycle.viewModelScope
 import com.charlesbarton.bananachess.engine.model.GameAction
 import com.charlesbarton.bananachess.engine.model.GameEvent
 import com.charlesbarton.bananachess.engine.model.GameState
@@ -18,9 +19,11 @@ import com.charlesbarton.bananachess.engine.setup.GameSetup
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlin.math.abs
 
 /**
@@ -30,6 +33,9 @@ import kotlin.math.abs
  * Every function here is called on [scope]'s single thread, which is also where the timeline
  * runs. Nothing is synchronised because nothing is shared.
  *
+ * @param haptics told about every selection and event for as long as the view model lives. A
+ *   haptics that holds a view goes through [attachHaptics] instead, because the view model
+ *   outlives the screen.
  * @param reduceMotion asked before every beat, so a change in the system setting takes
  *   effect on the next event.
  */
@@ -52,6 +58,11 @@ class MatchViewModel(
     private var effectSeed: ULong = 0x9E3779B97F4A7C15uL
     private var lastEffectId = 0L
 
+    // The screen's own haptics while it is showing. Never kept past that: it holds a view.
+    private var attachedHaptics: MatchHaptics? = null
+
+    internal val hasAttachedHaptics: Boolean get() = attachedHaptics != null
+
     private inline fun change(transform: MatchUiState.() -> MatchUiState) {
         mutableState.value = mutableState.value.transform()
     }
@@ -65,6 +76,19 @@ class MatchViewModel(
     fun onSceneInactive() = timeline.pause()
 
     fun onSceneActive() = timeline.resume()
+
+    /**
+     * Hands the phone's haptics to the match while the screen is showing. Call [detachHaptics]
+     * when it leaves: [haptics] usually holds a view, and the view model outlives the activity.
+     */
+    fun attachHaptics(haptics: MatchHaptics) {
+        attachedHaptics = haptics
+    }
+
+    /** Lets go of [haptics], if it is still the one attached. */
+    fun detachHaptics(haptics: MatchHaptics) {
+        if (attachedHaptics === haptics) attachedHaptics = null
+    }
 
     // Interaction
 
@@ -140,6 +164,7 @@ class MatchViewModel(
         val destinations = RulesEngine.legalMoves(pieceId, state.value.authoritativeState).map { it.destination }
         change { copy(selectedPieceId = pieceId, legalDestinations = destinations.toSet()) }
         haptics.selection()
+        attachedHaptics?.selection()
     }
 
     fun clearSelection() = change { copy(selectedPieceId = null, legalDestinations = emptySet()) }
@@ -195,6 +220,20 @@ class MatchViewModel(
             )
         }
         haptics.play(event)
+        attachedHaptics?.play(event)
+        // Retired here as well as by the view, which may leave before its animation ends.
+        for (burst in bursts) retireLater(BlendBurst.LIFETIME_MILLIS) { retireBurst(burst.id) }
+        splatter?.let { retireLater(Splatter.LIFETIME_MILLIS) { retireSplatter(it.id) } }
+    }
+
+    private fun retireLater(
+        millis: Long,
+        retire: () -> Unit,
+    ) {
+        viewModelScope.launch {
+            delay(millis)
+            retire()
+        }
     }
 
     private fun finishTimeline() {
@@ -268,10 +307,13 @@ class MatchViewModel(
         return effectSeed
     }
 
-    /** Called by the view once a burst has finished drawing. */
+    /**
+     * Called by the view once a burst has finished drawing. The view model retires it anyway
+     * after [BlendBurst.LIFETIME_MILLIS], so a screen that leaves mid-burst leaves nothing behind.
+     */
     fun retireBurst(id: Long) = change { copy(blendBursts = blendBursts.filter { it.id != id }) }
 
-    /** Called by the view once the splatter has faded. */
+    /** Called by the view once the splatter has faded; retired anyway after [Splatter.LIFETIME_MILLIS]. */
     fun retireSplatter(id: Long) = change { if (splatter?.id == id) copy(splatter = null) else this }
 
     /** The label [event] puts over the board, or null when it leaves the current one alone. */
