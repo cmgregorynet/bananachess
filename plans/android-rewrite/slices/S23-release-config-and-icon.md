@@ -5,12 +5,12 @@ layer: infra
 points: 2
 depends_on: [S22]
 touches: [Android/app/build.gradle.kts, Android/app/proguard-rules.pro, Android/app/src/main/res/, Android/app/src/main/AndroidManifest.xml, Android/gradle.properties, Android/scripts/]
-status: todo
-branch:
-started:
-completed:
-actual_points:
-review_fixes:
+status: done
+branch: slice/android-rewrite/S23
+started: 2026-11-23T22:50
+completed: 2026-11-23T23:38
+actual_points: 3
+review_fixes: release.sh SIGPIPE; stale outputs; icon clip and scale
 blocked_reason:
 ---
 
@@ -74,7 +74,10 @@ cd .. && git diff plan/android-rewrite...HEAD --stat | /usr/bin/grep -ci -E "key
 2: R8 with serialization is the usual place a release build breaks.
 
 ## Actuals
-- **Actual points:**
-- **What took longer / shorter than expected:**
-- **Surprises / unknowns that surfaced:**
-- **Review fixes applied:**
+- **Estimate vs actual:** 2 → 3. R8 was quick (kotlinx.serialization 1.13's bundled rules cover everything; `proguard-rules.pro` holds only a comment). Making release unit tests exist and pass under AGP 9 + Robolectric took longer, and one flaky 33-minute hang cost time.
+- **What shipped:** adaptive icon (warmPaper background, banana on clay tray foreground, monochrome layer for themed icons); release build with R8 + resource shrinking; version 0.1 (1); optional signing from `BANANA_KEYSTORE*` properties/env, unsigned otherwise; `Android/scripts/release.sh` builds APK + AAB and reports signed/UNSIGNED and the mapping file. `android.onlyEnableUnitTestForTheTestedBuildType=false` so `testReleaseUnitTest` exists; a release-only `TestBananaChessApplication` registers `ComponentActivity` for Robolectric (hence `BananaChessApplication` is `open`).
+- **R8 proof (inspection):** `$$serializer` classes, `Companion.serializer()`, data-object `INSTANCE`s and serial names for Route/MatchSource/MatchMode/StoredSnapshot survive; engine enum names intact. Not yet run on a device.
+- **Review fixes:** release.sh SIGPIPE under pipefail misreported signing; stale outputs cleared; apksigner path from the catalog; bruise layer clipped; tray and banana enlarged after rendering.
+- **Outside touches:** `BananaChessApplication.kt` (`open`), `src/testRelease/.../TestBananaChessApplication.kt`.
+- **Verification:** merged tree, no cache — assembleRelease, bundleRelease, testReleaseUnitTest, lintRelease, plus the debug suite and engine tests; keystore grep 0.
+- **Open for Charles:** icon is a taste call (banana reads slightly flat at launcher size). Smoke-test the shrunk release on a device: CPU game, kill process, resume, open a link. Possible latent DataStore/Robolectric flake in `ScaffoldTest.skipTheIntroduction` (one hang, not reproduced in 5 runs).
