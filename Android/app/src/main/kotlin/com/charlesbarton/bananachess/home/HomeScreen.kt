@@ -36,14 +36,14 @@ import com.charlesbarton.bananachess.engine.model.BoardOption
 import com.charlesbarton.bananachess.engine.model.BoardSetup
 import com.charlesbarton.bananachess.engine.model.BoardWrap
 import com.charlesbarton.bananachess.engine.model.PieceKind
-import com.charlesbarton.bananachess.match.MatchStart
+import com.charlesbarton.bananachess.match.MatchSource
 import com.charlesbarton.bananachess.settings.InMemorySettingsStore
 
 /** The start screen: the ways to play, and the board and rules they are played with. */
 @Composable
 fun HomeScreen(
     viewModel: HomeViewModel,
-    onStartMatch: (MatchStart) -> Unit,
+    onStartMatch: (MatchSource) -> Unit,
     onInvite: () -> Unit,
     onShowRules: () -> Unit,
     modifier: Modifier = Modifier,

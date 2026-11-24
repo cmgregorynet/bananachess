@@ -15,8 +15,6 @@ import com.charlesbarton.bananachess.engine.cpu.CpuDifficulty
 import com.charlesbarton.bananachess.engine.model.BoardSetup
 import com.charlesbarton.bananachess.engine.model.BoardWrap
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.catch
@@ -67,19 +65,15 @@ class DataStoreSettingsStore(
     companion object {
         private const val FILE_NAME = "settings"
 
-        // DataStore allows one instance per file per process, so instances are shared by file.
-        private val stores = mutableMapOf<File, DataStoreSettingsStore>()
-
-        /** The app's settings. [ioScope] names where the file is read and written. */
-        fun get(
+        /**
+         * The app's settings, read and written in [ioScope]. DataStore allows one instance per
+         * file per process, so only the app container calls this, once.
+         */
+        fun create(
             context: Context,
-            ioScope: CoroutineScope = CoroutineScope(Dispatchers.IO + SupervisorJob()),
-        ): DataStoreSettingsStore {
-            val file = context.applicationContext.preferencesDataStoreFile(FILE_NAME)
-            return synchronized(stores) {
-                stores.getOrPut(file) { DataStoreSettingsStore(createDataStore(file, ioScope)) }
-            }
-        }
+            ioScope: CoroutineScope,
+        ): DataStoreSettingsStore =
+            DataStoreSettingsStore(createDataStore(context.preferencesDataStoreFile(FILE_NAME), ioScope))
 
         /** A Preferences DataStore on [file], which must end in `.preferences_pb`. */
         fun createDataStore(

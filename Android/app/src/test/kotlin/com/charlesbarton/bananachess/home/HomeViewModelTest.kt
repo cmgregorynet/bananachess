@@ -226,7 +226,7 @@ class HomeViewModelTest {
             viewModel.setBoardWrap(BoardWrap.Sides)
             viewModel.setBlenderBattles(true)
 
-            val start = viewModel.startLocal()
+            val start = viewModel.startLocal().deal()
 
             assertEquals(MatchMode.LocalVersus, start.mode)
             assertEquals(
@@ -245,7 +245,7 @@ class HomeViewModelTest {
     @Test
     fun `a default local match is the standard game`() =
         runTest {
-            assertEquals(GameSetup.newGame(), launched(InMemorySettingsStore()).startLocal().state)
+            assertEquals(GameSetup.newGame(), launched(InMemorySettingsStore()).startLocal().deal().state)
         }
 
     @Test
@@ -254,7 +254,7 @@ class HomeViewModelTest {
             val viewModel = launched(InMemorySettingsStore())
             viewModel.setDifficulty(CpuDifficulty.Hard)
 
-            val start = viewModel.startComputer()
+            val start = viewModel.startComputer().deal()
 
             assertEquals(MatchMode.Computer(CpuDifficulty.Hard, humanPlays = PlayerId.One), start.mode)
             assertEquals(PlayerId.One, start.state.activePlayer)
@@ -266,9 +266,28 @@ class HomeViewModelTest {
             val viewModel = launched(InMemorySettingsStore())
             viewModel.setHumanPlaysFirst(false)
 
-            val start = viewModel.startComputer()
+            val start = viewModel.startComputer().deal()
 
             assertEquals(MatchMode.Computer(CpuDifficulty.Medium, humanPlays = PlayerId.Two), start.mode)
             assertEquals(PlayerId.One, start.state.activePlayer)
+        }
+
+    @Test
+    fun `a match carries its seed, so a random board is dealt the same every time`() =
+        runTest {
+            val viewModel =
+                HomeViewModel(
+                    InMemorySettingsStore(),
+                    CoroutineScope(StandardTestDispatcher(testScheduler)),
+                    seeds = { 42uL },
+                )
+            testScheduler.advanceUntilIdle()
+            viewModel.setBoardSetup(BoardSetup.Random)
+
+            val source = viewModel.startLocal()
+
+            assertEquals(42uL, source.seed)
+            assertEquals(GameSetup.newGame(boardSetup = BoardSetup.Random, seed = 42uL), source.deal().state)
+            assertEquals(source.deal(), source.deal())
         }
 }
