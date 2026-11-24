@@ -5,12 +5,12 @@ layer: ui
 points: 2
 depends_on: [S21]
 touches: [Android/app/src/main/AndroidManifest.xml, Android/app/src/main/kotlin/com/charlesbarton/bananachess/MainActivity.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/BananaChessApp.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/home/HomeScreen.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/MatchScreen.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/link/LinkHandoff.kt, Android/app/src/test/kotlin/com/charlesbarton/bananachess/link/LinkUiTest.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/MatchSource.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/BananaChessApp.kt]
-status: todo
-branch:
-started:
-completed:
-actual_points:
-review_fixes:
+status: done
+branch: slice/android-rewrite/S22
+started: 2026-11-23T20:59
+completed: 2026-11-23T22:50
+actual_points: 3
+review_fixes: links Flow built once; ActivityController harness; protected onNewIntent
 blocked_reason:
 ---
 
@@ -80,7 +80,9 @@ cd .. && /usr/bin/grep -n 'android:scheme="bananachess"' Android/app/src/main/An
 2: manifest, intent handling and three error surfaces.
 
 ## Actuals
-- **Actual points:**
-- **What took longer / shorter than expected:**
-- **Surprises / unknowns that surfaced:**
-- **Review fixes applied:**
+- **Estimate vs actual:** 2 → 3. Production code was quick; the test harness was not — `ActivityScenario.close()` deadlocked under the compose rule and `checkActivities` leaked between tests.
+- **What shipped:** manifest `singleTop` + VIEW/BROWSABLE filter for `bananachess://m`. `MainActivity` hands links to `BananaChessApp(incomingLinks: Flow<String>)` through a buffered Channel built once in `onCreate`, reading the launch intent only when `savedInstanceState == null` and ignoring Recents relaunches. `HomeViewModel` moved to the activity-level owner so the "Can't open that match" alert and good-link navigation (`popUpTo<Route.Home>()`) work over Home, Match and Rules. Invite by Link opens a ByLink match; `sendLink` capsule launches an `ACTION_SEND` chooser, falling back to clipboard + banner. Restart hidden and refused in link play.
+- **Review fixes:** incoming-links Flow no longer rebuilt per recomposition; tests drive the activity with Robolectric's ActivityController inside the compose rule (≈3 s instead of hanging); `onNewIntent` back to protected; dropped an animation-timing-dependent assertion.
+- **Outside touches:** `MatchViewModel.kt` (`shareSheetUnavailable()`, restart guards), `ScaffoldTest.kt` (placeholder test removed), `HomeScreenTest.kt` (no `onInvite`).
+- **Verification:** merged tree, no cache — engine tests, app tests, lint, ktlint, assembleDebug; manifest scheme grep.
+- **Notes for S23/S24:** release/R8 build not exercised yet. Only `bananachess://` links, no https App Links. Test tip: `Robolectric.buildActivity(...).setup()` inside `AndroidComposeTestRule(activityRule = …)`, never `ActivityScenario.launch` in the test body.
