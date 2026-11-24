@@ -352,12 +352,14 @@ class CpuPlayTest {
 
     /** A search that runs until it is told to stop, and says when it was. */
     private class StoppableSearch : CpuOpponent {
+        val started = CountDownLatch(1)
         val stopped = CountDownLatch(1)
 
         override fun selectAction(
             state: GameState,
             shouldStop: () -> Boolean,
         ): GameAction? {
+            started.countDown()
             val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(10)
             while (!shouldStop()) {
                 if (System.nanoTime() > deadline) return null
@@ -374,6 +376,7 @@ class CpuPlayTest {
             val search = StoppableSearch()
             val viewModel = cpuMatchOnAThread(humanPlays = PlayerId.Two, cpu = search)
             assertTrue(viewModel.ui.isOpponentThinking)
+            assertTrue(search.started.await(5, TimeUnit.SECONDS), "the search never started")
 
             viewModel.restart()
 
@@ -392,6 +395,7 @@ class CpuPlayTest {
             val viewModel = cpuMatchOnAThread(humanPlays = PlayerId.Two, cpu = search)
             assertTrue(viewModel.ui.isOpponentThinking)
 
+            assertTrue(search.started.await(5, TimeUnit.SECONDS), "the search never started")
             viewModels.clear()
 
             assertTrue(search.stopped.await(5, TimeUnit.SECONDS), "the search outlived its match")
