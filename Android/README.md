@@ -179,5 +179,5 @@ The engine suite also carries the Swift engine's own hand-written tests: the rul
 ## Known open items
 
 - **A possible test flake.** `ScaffoldTest.skipTheIntroduction` hung once (for over half an hour) while the release unit tests were being set up, probably in DataStore under Robolectric. It did not reproduce in five reruns. If the app tests ever stall, suspect that test first.
-- **The release build has not been recorded as checked on a device.** R8's output was checked by reading the mapping. The first device run of a release build should cover a computer match, killing the app and resuming, and opening a link.
+- **The release build has been checked only on an emulator, and only in part.** The shrunk APK, signed with the local debug key, opened an iOS-written link and offered to resume it after a force-stop, with no crash. A computer match has not yet been played on a release build, and no release build has run on a physical phone.
 - **The look has only been judged on the JVM.** Appearance is checked by pixel tests under Robolectric, not side by side with the iPhone.

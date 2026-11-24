@@ -793,9 +793,11 @@ in five reruns.
 `AndroidComposeTestRule(activityRule = …)`, as `link/LinkUiTest.kt` does. Never call
 `ActivityScenario.launch` in a test body: closing it deadlocks under the Compose rule.
 
-**The release build has not been recorded as checked on a device.** R8 was checked by
-reading the mapping. The first device run should cover a computer match, killing the app and
-resuming, and opening a link.
+**The release build has been checked only on an emulator, and only in part.** On 2026-11-23,
+the shrunk release APK, signed with the local debug key, ran on an API 35 emulator. A link
+written by the iOS engine opened in the right seat. After a force-stop, Home offered "Resume
+match · By link", and nothing crashed. A computer match has not yet been played on a release
+build, and no release build has run on a physical phone.
 
 ## Found while porting
 
