@@ -42,7 +42,7 @@ object GameStateCodec {
     /** @throws MatchCodecError.Malformed when [json] is not a readable state. */
     fun decode(json: String): GameState = fromJson(parseJson(json))
 
-    fun toJson(state: GameState): JsonObject =
+    internal fun toJson(state: GameState): JsonObject =
         obj(
             "activePlayer" to raw(state.activePlayer),
             "blenderBattles" to JsonPrimitive(state.blenderBattles),
@@ -59,7 +59,7 @@ object GameStateCodec {
         )
 
     /** @throws MatchCodecError.Malformed when [element] is not a readable state. */
-    fun fromJson(element: JsonElement): GameState {
+    internal fun fromJson(element: JsonElement): GameState {
         val json = element.asObject()
         val pieces = json.array("pieces").map(::pieceFromJson)
         if (pieces.distinctBy { it.id }.size != pieces.size) malformed()

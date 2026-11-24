@@ -13,7 +13,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.runtime.remember
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
@@ -22,6 +22,11 @@ import androidx.compose.ui.semantics.heading
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.ViewModel
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.createSavedStateHandle
+import androidx.lifecycle.viewModelScope
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
@@ -38,12 +43,17 @@ import com.charlesbarton.bananachess.art.isReducedMotion
 import com.charlesbarton.bananachess.home.HomeScreen
 import com.charlesbarton.bananachess.home.HomeViewModel
 import com.charlesbarton.bananachess.match.MatchScreen
+import com.charlesbarton.bananachess.match.MatchSnapshotStore
 import com.charlesbarton.bananachess.match.MatchSource
 import com.charlesbarton.bananachess.match.MatchStart
 import com.charlesbarton.bananachess.match.MatchViewModel
 import com.charlesbarton.bananachess.rules.RulesScreen
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlin.reflect.KType
@@ -108,19 +118,60 @@ fun newMatchViewModel(
         scope = CoroutineScope(SupervisorJob() + container.dispatchers.main),
         cpuDispatcher = container.dispatchers.default,
         cpuOpponent = container.cpuOpponent,
+        snapshots = container.snapshots,
     )
 
 /**
- * The match a [MatchSource] opens, or null when there is none to open. Called once per visit to
- * the Match route, including the visit restored after the process was restarted under it.
+ * Decides which match a visit to the Match route opens. Made once per back-stack entry, so a
+ * rotation keeps its answer; after the process was restarted under the entry it is made again
+ * and decides again.
+ *
+ * A new match is dealt from its [MatchSource.New] the first time. Every other time, and always
+ * for [MatchSource.Saved], the saved match is preferred: once a match has been played on, the
+ * snapshot is where it is, and dealing the source again would put it back to its opening. A
+ * restored new match with nothing saved is dealt again; "Resume match" with nothing saved opens
+ * nothing.
  */
-private fun matchStartOf(source: MatchSource): MatchStart? =
-    when (source) {
-        is MatchSource.New -> source.deal()
+internal class MatchOpening(
+    source: MatchSource,
+    handle: SavedStateHandle,
+    snapshots: MatchSnapshotStore,
+    scope: CoroutineScope,
+) : ViewModel(scope) {
+    sealed interface State {
+        /** Waiting for the saved match to be read. */
+        data object Loading : State
 
-        // S20 loads the snapshot store's match here (and has a restored New prefer it).
-        MatchSource.Saved -> null
+        /** Nothing to open: the route goes back to where a match can be started. */
+        data object NoMatch : State
+
+        data class Ready(
+            val start: MatchStart,
+        ) : State
     }
+
+    private val mutableState = MutableStateFlow<State>(State.Loading)
+    val state: StateFlow<State> = mutableState.asStateFlow()
+
+    init {
+        // Kept in the entry's saved state, which is all that outlives the process.
+        val openedBefore = handle.get<Boolean>(OPENED) == true
+        handle[OPENED] = true
+        if (source is MatchSource.New && !openedBefore) {
+            mutableState.value = State.Ready(source.deal())
+        } else {
+            viewModelScope.launch {
+                val saved = snapshots.load()?.let { MatchStart(it.mode, it.state) }
+                val start = saved ?: (source as? MatchSource.New)?.deal()
+                mutableState.value = start?.let(State::Ready) ?: State.NoMatch
+            }
+        }
+    }
+
+    private companion object {
+        const val OPENED = "opened"
+    }
+}
 
 /**
  * @param createMatch makes the view model for a match that is starting. Called once per visit
@@ -138,7 +189,12 @@ fun BananaChessApp(
     NavHost(navController = navController, startDestination = Route.Home, modifier = modifier) {
         composable<Route.Home> {
             val homeViewModel: HomeViewModel =
-                viewModel(factory = viewModelFactory { initializer { HomeViewModel(container.settings) } })
+                viewModel(
+                    factory =
+                        viewModelFactory {
+                            initializer { HomeViewModel(container.settings, snapshots = container.snapshots) }
+                        },
+                )
             HomeScreen(
                 viewModel = homeViewModel,
                 onStartMatch = { source -> navController.navigate(Route.Match(source)) { launchSingleTop = true } },
@@ -147,24 +203,49 @@ fun BananaChessApp(
             )
         }
         composable<Route.Match>(typeMap = Route.Match.typeMap) { entry ->
-            val source = remember(entry) { entry.toRoute<Route.Match>().source }
-            val start = remember(source) { matchStartOf(source) }
-            if (start == null) {
-                // Nothing to open. Go back to where a match can be started.
-                LaunchedEffect(Unit) { navController.popBackStack<Route.Match>(inclusive = true) }
-            } else {
-                val context = LocalContext.current.applicationContext
-                // Scoped to this back-stack entry: a rotation keeps the match, leaving ends it.
-                val matchViewModel: MatchViewModel =
-                    viewModel(
-                        factory = viewModelFactory { initializer { createMatch(start) { isReducedMotion(context) } } },
-                    )
-                MatchScreen(
-                    viewModel = matchViewModel,
-                    // By type, so a second press during the way out cannot pop Home too.
-                    onExit = { navController.popBackStack<Route.Match>(inclusive = true) },
-                    onShowRules = { navController.navigate(Route.Rules) { launchSingleTop = true } },
+            val opening: MatchOpening =
+                viewModel(
+                    factory =
+                        viewModelFactory {
+                            initializer {
+                                MatchOpening(
+                                    source = entry.toRoute<Route.Match>().source,
+                                    handle = createSavedStateHandle(),
+                                    snapshots = container.snapshots,
+                                    scope = CoroutineScope(SupervisorJob() + container.dispatchers.main),
+                                )
+                            }
+                        },
                 )
+            val openingState by opening.state.collectAsStateWithLifecycle()
+            when (val current = openingState) {
+                // A file read: too short to say anything, so just the paper.
+                MatchOpening.State.Loading -> {
+                    PaperBackground(modifier = Modifier.fillMaxSize())
+                }
+
+                // Go back to where a match can be started.
+                MatchOpening.State.NoMatch -> {
+                    LaunchedEffect(Unit) { navController.popBackStack<Route.Match>(inclusive = true) }
+                }
+
+                is MatchOpening.State.Ready -> {
+                    val context = LocalContext.current.applicationContext
+                    // Scoped to this back-stack entry: a rotation keeps the match, leaving ends it.
+                    val matchViewModel: MatchViewModel =
+                        viewModel(
+                            factory =
+                                viewModelFactory {
+                                    initializer { createMatch(current.start) { isReducedMotion(context) } }
+                                },
+                        )
+                    MatchScreen(
+                        viewModel = matchViewModel,
+                        // By type, so a second press during the way out cannot pop Home too.
+                        onExit = { navController.popBackStack<Route.Match>(inclusive = true) },
+                        onShowRules = { navController.navigate(Route.Rules) { launchSingleTop = true } },
+                    )
+                }
             }
         }
         composable<Route.Rules> {
