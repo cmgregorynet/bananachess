@@ -67,6 +67,8 @@ import com.charlesbarton.bananachess.art.SplatterView
 import com.charlesbarton.bananachess.art.isReducedMotion
 import com.charlesbarton.bananachess.engine.model.RuleSet
 import com.charlesbarton.bananachess.engine.setup.GameSetup
+import com.charlesbarton.bananachess.link.LinkHandoffButton
+import com.charlesbarton.bananachess.link.LinkShare
 import com.charlesbarton.bananachess.rules.TeachingOverlay
 import kotlinx.coroutines.delay
 import kotlin.math.max
@@ -177,6 +179,16 @@ fun MatchScreen(
     val errorBanner: @Composable () -> Unit = {
         state.errorMessage?.let { ErrorBanner(message = it, onDismiss = viewModel::dismissError) }
     }
+    val sendLink: @Composable () -> Unit = {
+        state.linkToSend?.let { link ->
+            LinkHandoffButton(
+                title = state.linkHandoffTitle,
+                onClick = {
+                    if (!LinkShare.send(context, link, state.linkShareText)) viewModel.shareSheetUnavailable()
+                },
+            )
+        }
+    }
 
     PaperBackground(modifier = modifier.testTag(MatchTags.SCREEN)) {
         // The introduction is drawn in this tree, not in a window of its own, so while it is up
@@ -211,9 +223,11 @@ fun MatchScreen(
                     },
                     below = {
                         ScoreboardView(scoreboard = bottomScoreboard, seat = state.seat(state.bottomPlayer))
-                        // Link play's "send" button belongs here, between the scoreboard and the
-                        // controls. Once the match is over, anything here is under the scrim.
+                        // Once the match is over the scrim covers this spot, so the result
+                        // overlay offers the final position instead.
+                        if (state.outcome == null) sendLink()
                         Controls(
+                            showsRestart = state.canPlayAgain,
                             canUndo = state.canUndo,
                             turnNumber = state.displayState.turnNumber,
                             showsDebugControls = showsDebugControls,
@@ -229,7 +243,15 @@ fun MatchScreen(
                 // "Play again" clears the result at once; fading it out would show a blank panel.
                 exit = ExitTransition.None,
             ) {
-                ResultOverlay(state = state, onPlayAgain = viewModel::restart, onDone = onExit, notice = errorBanner)
+                ResultOverlay(
+                    state = state,
+                    onPlayAgain = viewModel::restart,
+                    onDone = onExit,
+                    notice = {
+                        errorBanner()
+                        sendLink()
+                    },
+                )
             }
             // Over the result, under the introduction. It has no semantics and takes no touches.
             state.splatter?.let { splatter ->
@@ -250,7 +272,7 @@ fun MatchScreen(
         }
     }
 
-    if (state.isShowingRestartConfirmation) {
+    if (state.isShowingRestartConfirmation && state.canPlayAgain) {
         RestartDialog(onRestart = viewModel::restart, onKeepPlaying = viewModel::cancelRestart)
     }
     state.pendingSelfBlend?.let { pending ->
@@ -431,6 +453,7 @@ internal fun ErrorBanner(
 
 @Composable
 private fun Controls(
+    showsRestart: Boolean,
     canUndo: Boolean,
     turnNumber: Int,
     showsDebugControls: Boolean,
@@ -444,7 +467,8 @@ private fun Controls(
         verticalArrangement = Arrangement.spacedBy(8.dp),
         itemVerticalAlignment = Alignment.CenterVertically,
     ) {
-        PaperButton(text = "Restart", onClick = onRestart)
+        // A link match belongs to both phones, so it is never restarted from one.
+        if (showsRestart) PaperButton(text = "Restart", onClick = onRestart)
         if (showsDebugControls) {
             PaperButton(text = "Undo", onClick = onUndo, enabled = canUndo)
             // The turn count is the stall metric to watch during playtesting.
