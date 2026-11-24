@@ -1,5 +1,6 @@
 package com.charlesbarton.bananachess.match
 
+import com.charlesbarton.bananachess.engine.cpu.CpuDifficulty
 import com.charlesbarton.bananachess.engine.model.GameEvent
 import com.charlesbarton.bananachess.engine.model.GameState
 import com.charlesbarton.bananachess.engine.model.Piece
@@ -32,10 +33,14 @@ internal class RecordingHaptics : MatchHaptics {
     }
 }
 
+/** A computer that never finds anything to play, so a test decides every move itself. */
+internal val passingCpu: (CpuDifficulty) -> CpuOpponent = { CpuOpponent { _, _ -> null } }
+
 /**
  * A view model whose timeline runs on the test's virtual clock. By default the player has seen
  * the first-match introduction. The settings are read before this returns, as the app's
- * immediate main dispatcher reads an in-memory store.
+ * immediate main dispatcher reads an in-memory store. The computer, if any, thinks on the
+ * virtual clock too.
  */
 internal fun TestScope.matchViewModel(
     state: GameState = GameSetup.newGame(),
@@ -44,6 +49,7 @@ internal fun TestScope.matchViewModel(
     blendEffects: BlendEffectPolicy = BlendEffectPolicy.Never,
     haptics: MatchHaptics = MatchHaptics.None,
     reduceMotion: () -> Boolean = { false },
+    cpuOpponent: (CpuDifficulty) -> CpuOpponent = passingCpu,
 ): MatchViewModel =
     MatchViewModel(
         mode = mode,
@@ -53,6 +59,8 @@ internal fun TestScope.matchViewModel(
         haptics = haptics,
         reduceMotion = reduceMotion,
         scope = CoroutineScope(StandardTestDispatcher(testScheduler)),
+        cpuDispatcher = StandardTestDispatcher(testScheduler),
+        cpuOpponent = cpuOpponent,
     ).also { testScheduler.runCurrent() }
 
 /** Moves virtual time on by [millis], including whatever falls due exactly at the end of it. */

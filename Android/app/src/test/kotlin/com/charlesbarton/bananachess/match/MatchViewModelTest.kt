@@ -386,6 +386,8 @@ class MatchViewModelTest {
         runTest {
             val mode = MatchMode.Computer(CpuDifficulty.Easy, humanPlays = PlayerId.Two)
             val viewModel = matchViewModel(mode = mode)
+            // The stand-in computer finds nothing to play, so its turn is left standing.
+            settle()
             val before = viewModel.ui
 
             viewModel.tap(ownBanana)
