@@ -5,9 +5,9 @@ layer: ui
 points: 3
 depends_on: [S17]
 touches: [Android/app/src/main/kotlin/com/charlesbarton/bananachess/art/BlendEffects.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/AndroidMatchHaptics.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/BoardView.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/MatchScreen.kt, Android/app/src/test/kotlin/com/charlesbarton/bananachess/art/BlendEffectsTest.kt, Android/app/src/test/kotlin/com/charlesbarton/bananachess/match/MatchHapticsTest.kt]
-status: todo
-branch:
-started:
+status: in_progress
+branch: slice/android-rewrite/S18
+started: 2026-11-23T17:11
 completed:
 actual_points:
 review_fixes:
@@ -33,6 +33,7 @@ The juice: fruit bursts into droplets, sometimes splatters the screen, and the p
 - **Established by S16:** add each burst in `BoardView` at the marked spot outside the clipped board: `key(burst.id) { BlendBurstView(…, modifier = Modifier.boardCell(burst.position, state.isRotated)) }`. `boardCell` sizes and places a child on one square by real layout, so `onGloballyPositioned` on that child gives the square's on-screen centre for the splatter origin; hoist it through a new callback parameter on `BoardView`. Burst nodes must add no semantics or `BoardViewTest`'s accessibility-tree test fails. Pieces currently have no enter or exit transition; the "pulped" transition is yours.
 - **Established by S17 (read `match/MatchScreen.kt`, `ResultOverlay.kt`, `MatchDialogs.kt`, `BananaChessApp.kt`, and `test/.../match/MatchScreenTest.kt`):** `MatchScreen(viewModel, settings, onExit, onShowRules, modifier, showsDebugControls)`. The one production construction site of the view model is `newMatchViewModel(start, reduceMotion)` in `BananaChessApp.kt`; it is scoped to the Match back-stack entry, so changing `graph.matchStart.current` while a match is showing does not swap the match (pop and re-navigate instead). Commented plug-in spots exist in `MatchScreen` for the splatter (S18), the thinking indicator (S19) and the send button (S22). Once the match is over the result scrim swallows taps beneath it; anything that must stay usable then goes in `ResultOverlay`'s `notice` slot. `PaperAlertDialog(title, message, confirmLabel, onConfirm, onDismiss, dismissLabel = null)` is a one-button alert. `MatchTags.TURN_INDICATOR`, `ERROR_BANNER`, `RESULT`.
 - **Keep Compose tests fast:** `composeRule.waitForIdle()` after every move of a whole match took over three minutes under load and timed out. Drive long sequences through the view model with `scope.settle()` and call `waitForIdle()` once at the end, as `MatchScreenTest`'s played-out test now does.
+- **Added from the architecture review (findings M2 and S4), sent to the worker mid-slice:** the view model owns effect lifetime (bursts and splatter are cleared by the view model even if the view never calls `retire*`), and haptics never hold a `View` beyond composition (attached and detached by `MatchScreen`).
 
 ### Toolchain facts established by S01 (read before writing code)
 - Versions are pinned in `Android/gradle/libs.versions.toml`: Gradle 9.9.2, AGP 9.5.2 (built-in Kotlin, so `:app` has no `kotlin-android` plugin), Kotlin 2.4.21, compileSdk 37.2, targetSdk 37, minSdk 26, Compose BOM 2026.11.01.

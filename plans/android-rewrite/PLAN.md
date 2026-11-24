@@ -7,7 +7,7 @@ approved: 2026-11-23T12:45
 base_branch: main
 feature_branch: plan/android-rewrite
 max_parallel: 5
-total_points: 63
+total_points: 67
 ---
 
 # Banana Chess for Android (native Kotlin rewrite)
@@ -59,15 +59,17 @@ Order of work: infrastructure → backend/data → domain/services → UI → po
 | S16 | Build the board composable | ui | 3 | S15, S12 |
 | S17 | Build the Match screen and make local two-player playable end to end | ui | 3 | S16, S14 |
 | S18 | Add blend bursts, splatter, piece transitions and haptics | ui | 3 | S17 |
-| S19 | Add matches against the computer | ui | 2 | S18, S09 |
-| S20 | Save the match in progress and offer to resume it | ui | 2 | S19, S10 |
+| S19 | Add matches against the computer (plus a cancellable search, from the architecture review) | ui | 2 | S27, S09 |
+| S20 | Save the match in progress and offer to resume it | ui | 2 | S19, S10, S26 |
 | S21 | Add play-by-link match logic | ui | 3 | S20 |
 | S22 | Wire play-by-link into Android: deep links, sharing and error alerts | ui | 2 | S21 |
 | S23 | Add the app icon and a release build configuration | infra | 2 | S22 |
 | S24 | Document the Android app | docs | 1 | S23, S07, S02, S25 |
+| S26 | Give the app one container and make the Match route carry its source (added after the architecture review) | infra | 2 | S18 |
+| S27 | Move the teaching overlay into the view model and make the match screen recompose narrowly (added after the architecture review) | ui | 2 | S26 |
 | S25 | Port the Swift engine tests that needed the CPU, the evaluation or the codec (added during execution, after S07) | test | 1 | S07, S09, S10 |
 
-**Total:** 63 points across 25 slices. No slice is larger than 3. (62 points and 24 slices when approved; S25 was added during execution to close a gap S07 reported.)
+**Total:** 67 points across 27 slices. No slice is larger than 3. (62 points and 24 slices when approved. Added during execution: S25 to close a gap S07 reported; S26 and S27 after an independent architecture review on 2026-11-23, which Charles asked for mid-run.)
 
 ### Dependency Graph
 ```mermaid
@@ -90,7 +92,8 @@ graph LR
   S12 --> S16
   S16 --> S17
   S14 --> S17
-  S17 --> S18 --> S19
+  S17 --> S18 --> S26 --> S27 --> S19
+  S26 --> S20
   S09 --> S19
   S19 --> S20
   S10 --> S20
@@ -111,15 +114,17 @@ Wave 3: S05, S12  (6 pts)
 Wave 4: S06, S13  (6 pts)
 Wave 5: S07, S08, S10, S14, S15  (14 pts)
 Wave 6: S09, S16  (6 pts)
-Wave 7: S17  (3 pts)
+Wave 7: S17, S25  (4 pts)
 Wave 8: S18  (3 pts)
-Wave 9: S19  (2 pts)
-Wave 10: S20  (2 pts)
-Wave 11: S21  (3 pts)
-Wave 12: S22  (2 pts)
-Wave 13: S23  (2 pts)
-Wave 14: S24  (1 pts)
-Critical path: S01 -> S04 -> S05 -> S06 -> S15 -> S16 -> S17 -> S18 -> S19 -> S20 -> S21 -> S22 -> S23 -> S24  (36 pts)
+Wave 9: S26  (2 pts)
+Wave 10: S27  (2 pts)
+Wave 11: S19  (2 pts)
+Wave 12: S20  (2 pts)
+Wave 13: S21  (3 pts)
+Wave 14: S22  (2 pts)
+Wave 15: S23  (2 pts)
+Wave 16: S24  (1 pts)
+Critical path: S01 -> S04 -> S05 -> S06 -> S15 -> S16 -> S17 -> S18 -> S26 -> S27 -> S19 -> S20 -> S21 -> S22 -> S23 -> S24  (40 pts)
 ```
 
 ### Blockers & Sequencing Notes
@@ -145,6 +150,12 @@ Critical path: S01 -> S04 -> S05 -> S06 -> S15 -> S16 -> S17 -> S18 -> S19 -> S2
 | The resume snapshot cannot be written | Deliberately silent: the match continues; only resume is lost | S20 |
 | Settings cannot be read | Deliberately silent: defaults are used | S13 |
 | The CPU finds no action | Not an error: the engine has already passed or ended the turn | S19 |
+
+### Architecture review (2026-11-23, mid-execution)
+Charles asked that the architecture meet the standard of a top-tier consumer Android team. An independent review of the code built through S17 found it would pass such a review, with one structural problem: matches were handed to the Match screen through an in-memory holder, so process death lost the match and resume and deep links would each have patched around it. Response:
+- **Must fix:** route-carried match source and an `Application`-owned container (S26, before S20); effect lifetime owned by the view model and haptics that cannot leak the activity (folded into S18).
+- **Should fix:** teaching overlay state moved into the view model and narrower recomposition (S27); cancellable CPU search with a stale-reply guard (folded into S19); engine JSON types kept internal (folded into S20).
+- **Scale-only, deliberately not done:** feature modules, a DI framework, a domain/use-case layer, binary-compatibility checks on `:engine`, screenshot tests. Each has a trigger recorded in the review; two modules remain the right split for this app.
 
 ## Risks
 - **The link format is inferred, not observed.** Swift's exact JSON bytes and Apple's compression framing are known only from documentation. S03 captures real output before S10 depends on it; a mismatch shows up as a failing golden test with a readable diff, not as a broken link in a friend's hands.
