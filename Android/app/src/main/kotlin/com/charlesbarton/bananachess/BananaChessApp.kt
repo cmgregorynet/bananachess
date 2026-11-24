@@ -2,26 +2,12 @@ package com.charlesbarton.bananachess
 
 import android.net.Uri
 import android.os.Bundle
-import androidx.compose.foundation.layout.Arrangement
-import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.semantics.heading
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -36,9 +22,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.toRoute
-import com.charlesbarton.bananachess.art.Palette
 import com.charlesbarton.bananachess.art.PaperBackground
-import com.charlesbarton.bananachess.art.PaperButton
 import com.charlesbarton.bananachess.art.isReducedMotion
 import com.charlesbarton.bananachess.home.HomeScreen
 import com.charlesbarton.bananachess.home.HomeViewModel
@@ -48,12 +32,15 @@ import com.charlesbarton.bananachess.match.MatchSnapshotStore
 import com.charlesbarton.bananachess.match.MatchSource
 import com.charlesbarton.bananachess.match.MatchStart
 import com.charlesbarton.bananachess.match.MatchViewModel
+import com.charlesbarton.bananachess.match.PaperAlertDialog
 import com.charlesbarton.bananachess.rules.RulesScreen
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
@@ -77,10 +64,6 @@ sealed interface Route {
 
     @Serializable
     data object Rules : Route
-
-    /** Where "Invite by Link" lands until link play is wired in. */
-    @Serializable
-    data object Invite : Route
 }
 
 /** A [MatchSource] as a navigation argument: JSON in the saved back stack, URL-encoded in the route. */
@@ -185,6 +168,9 @@ internal class MatchOpening(
 }
 
 /**
+ * @param incomingLinks match links handed to the app, each once, as they arrive. Opened from
+ *   wherever the app is: a link that cannot be opened is explained over the current screen and
+ *   leaves it alone; one that can replaces whatever is showing with its match.
  * @param createMatch makes the view model for a match that is starting. Called once per visit
  *   to the Match route; `reduceMotion` reads the system setting each time it is asked.
  */
@@ -193,33 +179,38 @@ fun BananaChessApp(
     container: AppContainer,
     modifier: Modifier = Modifier,
     navController: NavHostController = rememberNavController(),
+    incomingLinks: Flow<String> = emptyFlow(),
     createMatch: (start: MatchStart, reduceMotion: () -> Boolean) -> MatchViewModel = { start, reduceMotion ->
         newMatchViewModel(container, start, reduceMotion)
     },
 ) {
+    // Above the navigation rather than on Home's entry, because a link can arrive on any screen.
+    // Home is the bottom of the back stack and never leaves it, so this lives exactly as long.
+    val homeViewModel: HomeViewModel =
+        viewModel(
+            factory =
+                viewModelFactory {
+                    initializer { HomeViewModel(container.settings, snapshots = container.snapshots) }
+                },
+        )
+    val homeState by homeViewModel.state.collectAsStateWithLifecycle()
+
+    LaunchedEffect(incomingLinks) { incomingLinks.collect(homeViewModel::open) }
+
+    // An accepted link replaces whatever is showing. The match view model belongs to its
+    // back-stack entry, so the old match is popped and the new one is a new entry.
+    val linkToOpen = homeState.linkToOpen
+    LaunchedEffect(linkToOpen) {
+        if (linkToOpen == null) return@LaunchedEffect
+        homeViewModel.linkOpened()
+        navController.navigate(Route.Match(linkToOpen)) { popUpTo<Route.Home>() }
+    }
+
     NavHost(navController = navController, startDestination = Route.Home, modifier = modifier) {
         composable<Route.Home> {
-            val homeViewModel: HomeViewModel =
-                viewModel(
-                    factory =
-                        viewModelFactory {
-                            initializer { HomeViewModel(container.settings, snapshots = container.snapshots) }
-                        },
-                )
-            // A link that was opened and accepted goes straight to its match.
-            val linkToOpen =
-                homeViewModel.state
-                    .collectAsStateWithLifecycle()
-                    .value.linkToOpen
-            LaunchedEffect(linkToOpen) {
-                if (linkToOpen == null) return@LaunchedEffect
-                homeViewModel.linkOpened()
-                navController.navigate(Route.Match(linkToOpen)) { launchSingleTop = true }
-            }
             HomeScreen(
                 viewModel = homeViewModel,
                 onStartMatch = { source -> navController.navigate(Route.Match(source)) { launchSingleTop = true } },
-                onInvite = { navController.navigate(Route.Invite) { launchSingleTop = true } },
                 onShowRules = { navController.navigate(Route.Rules) { launchSingleTop = true } },
             )
         }
@@ -273,48 +264,16 @@ fun BananaChessApp(
             // Pops Rules by name, so a second press of "Done" during the way out cannot pop Home too.
             RulesScreen(onDone = { navController.popBackStack(Route.Rules, inclusive = true) })
         }
-        composable<Route.Invite> {
-            PlaceholderScreen(
-                title = "Invite by Link",
-                detail = "Link play is on its way.",
-                tag = PlaceholderTags.INVITE,
-                onBack = navController::popBackStack,
-            )
-        }
     }
-}
 
-/** Test tags of the stand-in screens. Each goes away with the screen it stands in for. */
-object PlaceholderTags {
-    const val INVITE = "invitePlaceholder"
-}
-
-@Composable
-private fun PlaceholderScreen(
-    title: String,
-    detail: String,
-    tag: String,
-    onBack: () -> Unit,
-) {
-    PaperBackground(modifier = Modifier.testTag(tag), contentAlignment = Alignment.Center) {
-        Column(
-            modifier = Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.safeDrawing).padding(28.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp, Alignment.CenterVertically),
-            horizontalAlignment = Alignment.CenterHorizontally,
-        ) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.headlineMedium,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.semantics { heading() },
-            )
-            Text(
-                text = detail,
-                style = MaterialTheme.typography.bodyLarge,
-                color = Palette.inkSoft,
-                textAlign = TextAlign.Center,
-            )
-            PaperButton(text = "Back", onClick = { onBack() })
-        }
+    // A window of its own, so it sits over whichever screen is showing and changes nothing on it.
+    homeState.linkError?.let { error ->
+        PaperAlertDialog(
+            title = "Can't open that match",
+            message = error.message,
+            confirmLabel = "OK",
+            onConfirm = homeViewModel::dismissLinkError,
+            onDismiss = homeViewModel::dismissLinkError,
+        )
     }
 }

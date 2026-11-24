@@ -45,7 +45,6 @@ import com.charlesbarton.bananachess.settings.InMemorySettingsStore
 fun HomeScreen(
     viewModel: HomeViewModel,
     onStartMatch: (MatchSource) -> Unit,
-    onInvite: () -> Unit,
     onShowRules: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -73,7 +72,7 @@ fun HomeScreen(
                 onPlayLocal = { onStartMatch(viewModel.startLocal()) },
                 onResume = { onStartMatch(MatchSource.Saved) },
                 onPlayComputer = { isShowingCpuOptions = true },
-                onInvite = onInvite,
+                onInvite = { onStartMatch(viewModel.invite()) },
             )
             BoardOptionsPanel(
                 setup = state.boardSetup,
@@ -215,7 +214,6 @@ private fun HomeScreenPreview() {
         HomeScreen(
             viewModel = viewModel,
             onStartMatch = {},
-            onInvite = {},
             onShowRules = {},
         )
     }

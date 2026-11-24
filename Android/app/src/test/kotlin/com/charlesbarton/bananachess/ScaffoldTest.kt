@@ -121,11 +121,4 @@ class ScaffoldTest {
         composeRule.onNodeWithText("Local Two Player").assertExists()
         composeRule.onNodeWithText("How to play").assertIsDisplayed()
     }
-
-    @Test
-    fun `invite by link opens its placeholder`() {
-        composeRule.onNodeWithText("Invite by Link").performClick()
-
-        composeRule.onNodeWithTag(PlaceholderTags.INVITE).assertIsDisplayed()
-    }
 }
