@@ -6,12 +6,22 @@ import com.charlesbarton.bananachess.engine.model.BoardWrap
 import com.charlesbarton.bananachess.engine.model.GameState
 import com.charlesbarton.bananachess.engine.model.PlayerId
 import com.charlesbarton.bananachess.engine.model.RuleSet
+import kotlinx.serialization.SerialName
+import kotlinx.serialization.Serializable
 
-/** Who is playing, and from which seats. */
+/**
+ * Who is playing, and from which seats. Serializable because the saved match records it; the
+ * names it is written under are fixed, so renaming a case never orphans a saved match.
+ */
+@Serializable
 sealed interface MatchMode {
     /** Two players sharing one phone. */
+    @Serializable
+    @SerialName("local")
     data object LocalVersus : MatchMode
 
+    @Serializable
+    @SerialName("computer")
     data class Computer(
         val difficulty: CpuDifficulty,
         val humanPlays: PlayerId,
@@ -21,6 +31,8 @@ sealed interface MatchMode {
      * Correspondence play by link: no server, no accounts. Each side sends the other a link
      * containing the whole match.
      */
+    @Serializable
+    @SerialName("byLink")
     data class ByLink(
         val matchId: String,
         val localPlayer: PlayerId,
