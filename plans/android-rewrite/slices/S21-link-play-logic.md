@@ -5,12 +5,12 @@ layer: ui
 points: 3
 depends_on: [S20]
 touches: [Android/app/src/main/kotlin/com/charlesbarton/bananachess/link/, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/MatchViewModel.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/MatchUiState.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/home/HomeViewModel.kt, Android/app/src/test/kotlin/com/charlesbarton/bananachess/link/, Android/app/src/test/kotlin/com/charlesbarton/bananachess/match/LinkPlayTest.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/MatchSource.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/BananaChessApp.kt]
-status: todo
-branch:
-started:
-completed:
-actual_points:
-review_fixes:
+status: done
+branch: slice/android-rewrite/S21
+started: 2026-11-23T20:49
+completed: 2026-11-23T20:59
+actual_points: 3
+review_fixes: tests no longer run the timeline on construction; simpler incoming events
 blocked_reason:
 ---
 
@@ -82,7 +82,10 @@ cd Android && ./gradlew :app:testDebugUnitTest :app:lintDebug ktlintCheck :app:a
 3: several interacting rules (seats, stale links, animating an incoming move) but all testable with two view models passing strings.
 
 ## Actuals
-- **Actual points:**
-- **What took longer / shorter than expected:**
-- **Surprises / unknowns that surfaced:**
-- **Review fixes applied:**
+- **Estimate vs actual:** 3 → 3. The engine API dropped straight in; persistence needed no store change because a link's moveNumber always equals history.size. Only snag: the timeline shows its first event at once, which tripped the "opens on the position before" tests.
+- **What shipped:** `link/LinkPlay.kt`, `link/LinkError.kt` (NotAMatchLink, Damaged, FromNewerVersion, FromOlderVersion, Stale — distinct player-facing copy). `MatchSource.ByLink(link, localPlayer)` resolved in `MatchOpening` via `LinkPlay.start(source, snapshots.load())`, preferring the snapshot at the same match and move or later. `MatchUiState.linkToSend`, `linkHandoffTitle`, `linkShareText`; link-play indicator text. `HomeViewModel.invite()` (sync) / `open(url)` (async: `linkToOpen` or `linkError`, `dismissLinkError()`). The `:app` MatchOptions copy is gone. Golden iOS links (seed 1001, steps 0–1) open, and step 1 animates from step 0.
+- **Differences from iOS:** Android sends `lastMove` and animates incoming moves when the saved snapshot is exactly the position before; otherwise it opens on the result. iOS ignores `lastMove`, so links stay compatible both ways. After process death `lastMove` is lost (same as iOS).
+- **Review fixes:** test helpers no longer run the timeline on construction; simplified incoming-event derivation.
+- **Outside touches:** `match/MatchMode.kt` (MatchOptions removed; MatchStart gained lastMove/animateFrom), `HomeViewModelTest.kt` import, `golden-links.json` test resource.
+- **Verification:** merged tree, no cache — engine tests, app tests, lint, ktlint, assembleDebug.
+- **Notes for S22:** switch `onInvite` to `Route.Match(homeViewModel.invite())`. Home's LaunchedEffect navigates `linkToOpen` only while Home is composed, so an intent arriving during a match must pop to Home or navigate itself. Consider hiding Restart in ByLink: it re-deals at history 0, so the opponent would refuse the result as stale.
