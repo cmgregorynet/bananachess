@@ -238,6 +238,9 @@ class MatchViewModel(
 
     fun dismissError() = change { copy(errorMessage = null) }
 
+    /** The screen could not open the share sheet for [MatchUiState.linkToSend], so it copied the link instead. */
+    fun shareSheetUnavailable() = change { copy(errorMessage = SHARE_SHEET_UNAVAILABLE) }
+
     /**
      * Closes the first-match introduction, by "Play" or by the back button, and records that the
      * player has seen it. It closes on the call, not when the write lands: the write is
@@ -526,7 +529,10 @@ class MatchViewModel(
 
     // Match controls
 
-    fun requestRestart() = change { copy(isShowingRestartConfirmation = true) }
+    /** Never in link play: a restart deals the match again under the same id, which the opponent's phone refuses as stale. */
+    fun requestRestart() {
+        if (state.value.canPlayAgain) change { copy(isShowingRestartConfirmation = true) }
+    }
 
     fun cancelRestart() = change { copy(isShowingRestartConfirmation = false) }
 
@@ -536,6 +542,7 @@ class MatchViewModel(
      * the mode is a board you have not seen.
      */
     fun restart() {
+        if (!state.value.canPlayAgain) return
         timeline.stop()
         cpuJob?.cancel()
         undoStack.clear()
@@ -589,6 +596,8 @@ class MatchViewModel(
     private companion object {
         /** The shortest a computer's turn ever takes. */
         const val MINIMUM_THINKING_MILLIS = 320L
+
+        const val SHARE_SHEET_UNAVAILABLE = "Couldn't open the share sheet. The link was copied instead."
     }
 }
 

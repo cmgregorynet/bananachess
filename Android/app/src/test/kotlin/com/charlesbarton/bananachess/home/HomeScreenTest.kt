@@ -38,6 +38,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.GraphicsMode
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
 
 @RunWith(RobolectricTestRunner::class)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
@@ -47,7 +48,6 @@ class HomeScreenTest {
 
     private val store = InMemorySettingsStore()
     private val started = mutableListOf<MatchSource>()
-    private var invites by mutableIntStateOf(0)
     private var rulesOpened by mutableIntStateOf(0)
 
     private fun role(role: Role) = SemanticsMatcher.expectValue(SemanticsProperties.Role, role)
@@ -61,7 +61,6 @@ class HomeScreenTest {
                 HomeScreen(
                     viewModel = viewModel,
                     onStartMatch = { started += it },
-                    onInvite = { invites += 1 },
                     onShowRules = { rulesOpened += 1 },
                 )
             }
@@ -120,7 +119,7 @@ class HomeScreenTest {
     }
 
     @Test
-    fun `invite by link and how to play report their taps`() {
+    fun `invite by link starts a link match, and how to play reports its tap`() {
         showHome()
 
         composeRule.onNodeWithText("Invite by Link").performClick()
@@ -131,9 +130,8 @@ class HomeScreenTest {
             .performClick()
 
         composeRule.runOnIdle {
-            assertEquals(1, invites)
+            assertIs<MatchSource.ByLink>(started.single())
             assertEquals(1, rulesOpened)
-            assertEquals(emptyList(), started)
         }
     }
 
