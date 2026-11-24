@@ -5,12 +5,12 @@ layer: ui
 points: 3
 depends_on: [S16, S14]
 touches: [Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/MatchScreen.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/ScoreboardView.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/WildcardTrackerView.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/ResultOverlay.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/MatchDialogs.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/FlashPill.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/BoardView.kt, Android/app/src/test/kotlin/com/charlesbarton/bananachess/match/BoardViewTest.kt, Android/app/src/test/kotlin/com/charlesbarton/bananachess/ScaffoldTest.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/BananaChessApp.kt, Android/app/src/test/kotlin/com/charlesbarton/bananachess/match/MatchScreenTest.kt]
-status: todo
-branch:
-started:
-completed:
-actual_points:
-review_fixes:
+status: done
+branch: slice/android-rewrite/S17
+started: 2026-11-23T13:42
+completed: 2026-11-23T17:11
+actual_points: 5
+review_fixes: tracker gap; test helper; played-out test made fast after it timed out under load
 blocked_reason:
 ---
 
@@ -88,7 +88,15 @@ cd Android && ./gradlew :app:testDebugUnitTest :app:lintDebug ktlintCheck :app:a
 3: several components and the end-to-end smoke tests.
 
 ## Actuals
-- **Actual points:**
-- **What took longer / shorter than expected:**
+- **Actual points:** 5. The estimate was 3.
+- **What took longer / shorter than expected:** Longer. The layout needed a custom measure so the board fits small phones yet keeps its size at large fonts; deciding where the error banner lives once the result scrim is up; and the two requirements added during execution (teaching-overlay modality and back handling, the flash clamp). The worker was also interrupted once by a usage limit and resumed. The played-out match test and navigation wiring were quick.
 - **Surprises / unknowns that surfaced:**
+  - The board shrinks to no less than 288 dp, then the screen scrolls. On a 360×640 phone a standard match fits entirely; a wildcard match fits the board and both scoreboards, with the controls a short scroll away.
+  - Known gaps, not fixed: while the result overlay is up, TalkBack can still reach "Restart" underneath (as on iOS); for one frame after the teaching overlay appears, the board is still visible to TalkBack; dialog dismissal by back or outside tap is wired but untested.
+  - Once the match is over the result scrim swallows taps beneath it, so S22's "Send the final position" must go in `ResultOverlay`'s `notice` slot.
+  - The view model is created once per Match back-stack entry, so S22 must pop and re-navigate (or key the view model) to switch matches.
+  - Debug-only controls use the runtime debuggable flag because `BuildConfig` is not enabled.
+  - Outside `touches`: `rules/TeachingOverlay.kt` gained `onShowingChange` and a back handler.
 - **Review fixes applied:**
+  - Orchestrator, after merge: the played-out match test timed out under load (over three minutes for one test). It now plays the opening through the board and fast-forwards the rest through the view model; it takes about a second.
+  - Worker: narrowed the tracker gap so all three tracks fit one line on a 360 dp phone; fixed a test helper that picked an already-moved piece; removed a back-press test that did not press back.
