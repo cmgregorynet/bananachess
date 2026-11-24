@@ -8,6 +8,9 @@ import com.charlesbarton.bananachess.engine.model.PieceKind
 import com.charlesbarton.bananachess.engine.model.PlayerId
 import com.charlesbarton.bananachess.engine.model.Position
 import com.charlesbarton.bananachess.engine.setup.GameSetup
+import com.charlesbarton.bananachess.settings.InMemorySettingsStore
+import com.charlesbarton.bananachess.settings.Settings
+import com.charlesbarton.bananachess.settings.SettingsStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -29,10 +32,15 @@ internal class RecordingHaptics : MatchHaptics {
     }
 }
 
-/** A view model whose timeline runs on the test's virtual clock. */
+/**
+ * A view model whose timeline runs on the test's virtual clock. By default the player has seen
+ * the first-match introduction. The settings are read before this returns, as the app's
+ * immediate main dispatcher reads an in-memory store.
+ */
 internal fun TestScope.matchViewModel(
     state: GameState = GameSetup.newGame(),
     mode: MatchMode = MatchMode.LocalVersus,
+    settings: SettingsStore = InMemorySettingsStore(Settings(hasSeenTeachingOverlay = true)),
     blendEffects: BlendEffectPolicy = BlendEffectPolicy.Never,
     haptics: MatchHaptics = MatchHaptics.None,
     reduceMotion: () -> Boolean = { false },
@@ -40,11 +48,12 @@ internal fun TestScope.matchViewModel(
     MatchViewModel(
         mode = mode,
         initialState = state,
+        settings = settings,
         blendEffects = blendEffects,
         haptics = haptics,
         reduceMotion = reduceMotion,
         scope = CoroutineScope(StandardTestDispatcher(testScheduler)),
-    )
+    ).also { testScheduler.runCurrent() }
 
 /** Moves virtual time on by [millis], including whatever falls due exactly at the end of it. */
 internal fun TestScope.advance(millis: Long) {

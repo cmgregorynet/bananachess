@@ -4,7 +4,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.size
-import androidx.compose.material3.Text
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -24,8 +23,6 @@ import androidx.compose.ui.unit.Density
 import androidx.compose.ui.unit.dp
 import com.charlesbarton.bananachess.art.PaperTheme
 import com.charlesbarton.bananachess.engine.model.PieceKind
-import com.charlesbarton.bananachess.settings.InMemorySettingsStore
-import com.charlesbarton.bananachess.settings.Settings
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -147,37 +144,6 @@ class TeachingOverlayTest {
         composeRule.onNodeWithText("Play").assertIsDisplayed().performClick()
 
         assertEquals(1, finishedCount)
-    }
-
-    @Test
-    fun `a first-time player sees the introduction, and play records that they have`() {
-        val store = InMemorySettingsStore()
-        composeRule.setContent { PaperTheme { FirstMatchTeachingOverlay(settings = store) } }
-
-        composeRule.onNodeWithText("Move one piece").assertIsDisplayed()
-        assertFalse(store.current.hasSeenTeachingOverlay)
-
-        repeat(TeachingPages.lastIndex) { composeRule.onNodeWithText("Next").performClick() }
-        composeRule.onNodeWithText("Play").performClick()
-        composeRule.waitForIdle()
-
-        assertTrue(store.current.hasSeenTeachingOverlay)
-        composeRule.onNodeWithText("Play").assertDoesNotExist()
-    }
-
-    @Test
-    fun `a player who has seen the introduction is not shown it again`() {
-        val store = InMemorySettingsStore(Settings(hasSeenTeachingOverlay = true))
-        composeRule.setContent {
-            PaperTheme {
-                Text(text = "board")
-                FirstMatchTeachingOverlay(settings = store)
-            }
-        }
-
-        composeRule.onNodeWithText("board").assertIsDisplayed()
-        composeRule.onNodeWithText("Move one piece").assertDoesNotExist()
-        composeRule.onNodeWithText("Next").assertDoesNotExist()
     }
 
     private companion object {

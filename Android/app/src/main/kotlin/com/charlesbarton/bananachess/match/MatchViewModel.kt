@@ -16,6 +16,9 @@ import com.charlesbarton.bananachess.engine.rules.RulesEngine
 import com.charlesbarton.bananachess.engine.rules.RulesError
 import com.charlesbarton.bananachess.engine.rules.applying
 import com.charlesbarton.bananachess.engine.setup.GameSetup
+import com.charlesbarton.bananachess.settings.InMemorySettingsStore
+import com.charlesbarton.bananachess.settings.Settings
+import com.charlesbarton.bananachess.settings.SettingsStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -23,6 +26,7 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 
@@ -33,6 +37,8 @@ import kotlin.math.abs
  * Every function here is called on [scope]'s single thread, which is also where the timeline
  * runs. Nothing is synchronised because nothing is shared.
  *
+ * @param settings where the first-match introduction is recorded as seen. Read once, when the
+ *   match opens.
  * @param haptics told about every selection and event for as long as the view model lives. A
  *   haptics that holds a view goes through [attachHaptics] instead, because the view model
  *   outlives the screen.
@@ -42,6 +48,7 @@ import kotlin.math.abs
 class MatchViewModel(
     mode: MatchMode,
     initialState: GameState,
+    private val settings: SettingsStore,
     private val blendEffects: BlendEffectPolicy = BlendEffectPolicy.Standard,
     private val haptics: MatchHaptics = MatchHaptics.None,
     reduceMotion: () -> Boolean = { false },
@@ -62,6 +69,14 @@ class MatchViewModel(
     private var attachedHaptics: MatchHaptics? = null
 
     internal val hasAttachedHaptics: Boolean get() = attachedHaptics != null
+
+    init {
+        // Hidden until the settings have been read, so a returning player never sees it flash.
+        viewModelScope.launch {
+            val hasSeen = settings.settings.first().hasSeenTeachingOverlay
+            if (!hasSeen) change { copy(isTeachingOverlayShowing = true) }
+        }
+    }
 
     private inline fun change(transform: MatchUiState.() -> MatchUiState) {
         mutableState.value = mutableState.value.transform()
@@ -170,6 +185,17 @@ class MatchViewModel(
     fun clearSelection() = change { copy(selectedPieceId = null, legalDestinations = emptySet()) }
 
     fun dismissError() = change { copy(errorMessage = null) }
+
+    /**
+     * Closes the first-match introduction, by "Play" or by the back button, and records that the
+     * player has seen it. It closes on the call, not when the write lands: the write is
+     * best-effort and may never land.
+     */
+    fun dismissTeachingOverlay() {
+        if (!state.value.isTeachingOverlayShowing) return
+        change { copy(isTeachingOverlayShowing = false) }
+        viewModelScope.launch { settings.update { it.copy(hasSeenTeachingOverlay = true) } }
+    }
 
     // Committing a move
 
@@ -410,6 +436,7 @@ class MatchViewModel(
                 displayState = fresh,
                 authoritativeState = fresh,
                 errorMessage = current.errorMessage,
+                isTeachingOverlayShowing = current.isTeachingOverlayShowing,
             )
     }
 
@@ -425,7 +452,16 @@ class MatchViewModel(
                 authoritativeState = previous,
                 errorMessage = errorMessage,
                 hasUndoHistory = undoStack.isNotEmpty(),
+                isTeachingOverlayShowing = isTeachingOverlayShowing,
             )
         }
     }
 }
+
+/** A local match for previews, with the introduction already seen and nothing stored. */
+internal fun previewMatchViewModel(initialState: GameState): MatchViewModel =
+    MatchViewModel(
+        mode = MatchMode.LocalVersus,
+        initialState = initialState,
+        settings = InMemorySettingsStore(Settings(hasSeenTeachingOverlay = true)),
+    )

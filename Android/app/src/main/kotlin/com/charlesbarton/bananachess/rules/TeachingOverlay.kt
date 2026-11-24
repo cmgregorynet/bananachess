@@ -1,6 +1,5 @@
 package com.charlesbarton.bananachess.rules
 
-import androidx.activity.compose.BackHandler
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.tween
@@ -19,14 +18,9 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -44,7 +38,6 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.charlesbarton.bananachess.art.Palette
 import com.charlesbarton.bananachess.art.PaperBackground
 import com.charlesbarton.bananachess.art.PaperButton
@@ -54,9 +47,6 @@ import com.charlesbarton.bananachess.art.PlayerSeat
 import com.charlesbarton.bananachess.art.WashiPanel
 import com.charlesbarton.bananachess.art.isReducedMotion
 import com.charlesbarton.bananachess.engine.model.PieceKind
-import com.charlesbarton.bananachess.settings.SettingsStore
-import kotlinx.coroutines.flow.map
-import kotlinx.coroutines.launch
 
 /** One page of the first-match introduction. */
 data class TeachingPage(
@@ -133,46 +123,13 @@ fun rememberTeachingOverlayState(): TeachingOverlayState =
     rememberSaveable(saver = TeachingOverlayState.Saver) { TeachingOverlayState() }
 
 /**
- * The introduction as the Match screen shows it: only to a player who has never seen it, and
- * never again once they press "Play". Place it last in the screen's root box, over the board.
- *
- * Shows nothing until the settings have been read, so a returning player never sees it flash.
- *
- * It is drawn in the host's tree, not in a window of its own, so it does two things a dialog
- * would get for free: the system back button closes it, exactly as "Play" does, and
- * [onShowingChange] tells the host when to hide what is underneath from TalkBack.
- */
-@Composable
-fun FirstMatchTeachingOverlay(
-    settings: SettingsStore,
-    modifier: Modifier = Modifier,
-    onShowingChange: (Boolean) -> Unit = {},
-) {
-    val hasSeen by remember(settings) { settings.settings.map { it.hasSeenTeachingOverlay } }
-        .collectAsStateWithLifecycle(initialValue = true)
-    // Closes on the press, not when the write lands: the write is best-effort and may never land.
-    var isDismissed by rememberSaveable { mutableStateOf(false) }
-    val scope = rememberCoroutineScope()
-    val isShowing = !hasSeen && !isDismissed
-
-    fun finish() {
-        isDismissed = true
-        scope.launch { settings.update { it.copy(hasSeenTeachingOverlay = true) } }
-    }
-
-    val currentOnShowingChange by rememberUpdatedState(onShowingChange)
-    LaunchedEffect(isShowing) { currentOnShowingChange(isShowing) }
-
-    if (isShowing) {
-        BackHandler(onBack = ::finish)
-        TeachingOverlay(onFinished = ::finish, modifier = modifier)
-    }
-}
-
-/**
  * The four-page introduction, over a scrim that fills its parent and keeps touches off whatever
  * is underneath. [onFinished] is called once, by "Play" on the last page; it is the caller's cue
  * to record that the introduction has been seen and to stop showing it.
+ *
+ * It is drawn in the host's tree, not in a window of its own, so the host does two things a
+ * dialog would get for free: it closes it on the system back button, exactly as "Play" does, and
+ * it hides what is underneath from TalkBack while it shows.
  */
 @Composable
 fun TeachingOverlay(

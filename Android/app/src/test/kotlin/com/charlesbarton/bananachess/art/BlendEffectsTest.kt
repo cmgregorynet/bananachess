@@ -31,8 +31,6 @@ import com.charlesbarton.bananachess.match.advance
 import com.charlesbarton.bananachess.match.matchViewModel
 import com.charlesbarton.bananachess.match.square
 import com.charlesbarton.bananachess.match.ui
-import com.charlesbarton.bananachess.settings.InMemorySettingsStore
-import com.charlesbarton.bananachess.settings.Settings
 import kotlinx.coroutines.test.TestScope
 import org.junit.Rule
 import org.junit.Test
@@ -281,7 +279,6 @@ class BlendEffectsTest {
             PaperTheme {
                 MatchScreen(
                     viewModel = viewModel,
-                    settings = InMemorySettingsStore(Settings(hasSeenTeachingOverlay = true)),
                     onExit = {},
                     onShowRules = {},
                     showsDebugControls = false,

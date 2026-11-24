@@ -124,6 +124,8 @@ internal fun Position.displayed(isRotated: Boolean): Position =
  * @param onBurstPlaced called with a burst's id and the centre of its square in root coordinates
  *   whenever it is laid out, so a splatter knows where on screen its fruit was standing.
  * @param onBurstFinished called with a burst's id once [BlendBurst.LIFETIME_MILLIS] have passed.
+ * @param describeSquare what TalkBack says for a square. Asked only when something it reads has
+ *   changed; a test may count the calls.
  */
 @Composable
 fun BoardView(
@@ -132,29 +134,45 @@ fun BoardView(
     modifier: Modifier = Modifier,
     onBurstPlaced: (id: Long, centreInRoot: Offset) -> Unit = { _, _ -> },
     onBurstFinished: (id: Long) -> Unit = {},
+    describeSquare: MatchUiState.(Position) -> String = MatchUiState::squareDescription,
 ) {
     val context = LocalContext.current
     val reduceMotion = remember(context) { isReducedMotion(context) }
+    // Each layer is handed only what it draws, worked out once per change to what it reads, so a
+    // flash or a burst passing over the board recomposes the effects and nothing under them.
+    val display = state.displayState
+    val isRotated = state.isRotated
+    val squares =
+        remember(display, state.mode, state.selectedPieceId, state.legalDestinations) { state.squareLooks() }
+    val descriptions = rememberSquareDescriptions(state, describeSquare)
+    val markers = remember(display, state.mode) { state.blenderMarkers() }
+    val pieces = remember(display, state.mode) { state.pieceLooks() }
     // A chess board does not mirror for right-to-left languages: column 0 is always on the same
     // side for both players.
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
         Box(modifier = modifier.aspectRatio(1f).boardBorder()) {
             Box(modifier = Modifier.fillMaxSize().clipToBoard()) {
                 BoardGround(modifier = Modifier.fillMaxSize())
-                Squares(state = state, onSquareTap = onSquareTap, modifier = Modifier.fillMaxSize())
-                JoinedEdges(wrap = state.displayState.boardWrap, modifier = Modifier.fillMaxSize())
-                KnockedOutBlenders(state = state)
-                Pieces(state = state, reduceMotion = reduceMotion)
+                Squares(
+                    rows = squares,
+                    descriptions = descriptions,
+                    onSquareTap = onSquareTap,
+                    modifier = Modifier.fillMaxSize(),
+                )
+                JoinedEdges(wrap = display.boardWrap, modifier = Modifier.fillMaxSize())
+                KnockedOutBlenders(markers = markers, isRotated = isRotated)
+                Pieces(onBoard = pieces, selectedPieceId = state.selectedPieceId, reduceMotion = reduceMotion)
             }
             // Outside the clip, so pulp and a label on an edge square are not sliced off by the
             // border.
             Bursts(
-                state = state,
+                bursts = state.blendBursts,
+                isRotated = isRotated,
                 reduceMotion = reduceMotion,
                 onBurstPlaced = onBurstPlaced,
                 onBurstFinished = onBurstFinished,
             )
-            FlashPill(flash = state.flash, isRotated = state.isRotated, modifier = Modifier.fillMaxSize())
+            FlashPill(flash = state.flash, isRotated = isRotated, modifier = Modifier.fillMaxSize())
         }
     }
 }
@@ -245,29 +263,72 @@ private fun JoinedEdges(
 
 // region Squares
 
+/** One square as the board draws it. */
+private data class SquareLook(
+    val position: Position,
+    val isBlenderHome: Boolean,
+    val deliveryEdge: PlayerSeat?,
+    val isLegalDestination: Boolean,
+    val isSelectedOrigin: Boolean,
+)
+
+/** The squares row by row as they are displayed, top left first. */
+private fun MatchUiState.squareLooks(): List<List<SquareLook>> =
+    (0 until Board.SIZE).map { displayRow ->
+        (0 until Board.SIZE).map { displayColumn ->
+            val position = Position(displayRow, displayColumn).displayed(isRotated)
+            SquareLook(
+                position = position,
+                isBlenderHome = position in blenderHomes,
+                deliveryEdge = deliveryEdge(position),
+                isLegalDestination = position in legalDestinations,
+                isSelectedOrigin = selectedSquare == position,
+            )
+        }
+    }
+
+/**
+ * What TalkBack says for each square, keyed by engine position. Worked out again only when
+ * something [describe] reads changes, never for a flash, a burst or a splatter: each description
+ * asks the rules what is legal.
+ */
+@Composable
+internal fun rememberSquareDescriptions(
+    state: MatchUiState,
+    describe: MatchUiState.(Position) -> String = MatchUiState::squareDescription,
+): Map<Position, String> =
+    // Everything squareDescription reads, and nothing else.
+    remember(
+        state.displayState,
+        state.authoritativeState,
+        state.mode,
+        state.selectedPieceId,
+        state.legalDestinations,
+        state.isInputLocked,
+    ) { Board.allPositions.associateWith { state.describe(it) } }
+
 /**
  * Real layout rather than offsets, so each square's accessibility frame is where the square is.
  * Pieces are positioned by offset, since they need to travel, but nothing tappable is.
  */
 @Composable
 private fun Squares(
-    state: MatchUiState,
+    rows: List<List<SquareLook>>,
+    descriptions: Map<Position, String>,
     onSquareTap: (Position) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    // Worked out once per state, not once per recomposition: each one asks the rules what is legal.
-    val descriptions = remember(state) { Board.allPositions.associateWith(state::squareDescription) }
     Column(modifier = modifier) {
-        for (displayRow in 0 until Board.SIZE) {
+        for (row in rows) {
             Row(modifier = Modifier.weight(1f).fillMaxWidth()) {
-                for (displayColumn in 0 until Board.SIZE) {
-                    val position = Position(displayRow, displayColumn).displayed(state.isRotated)
+                for (square in row) {
+                    val position = square.position
                     SquareView(
                         isDark = position.isDarkSquare,
-                        isBlenderHome = position in state.blenderHomes,
-                        deliveryEdge = state.deliveryEdge(position),
-                        isLegalDestination = position in state.legalDestinations,
-                        isSelectedOrigin = state.selectedSquare == position,
+                        isBlenderHome = square.isBlenderHome,
+                        deliveryEdge = square.deliveryEdge,
+                        isLegalDestination = square.isLegalDestination,
+                        isSelectedOrigin = square.isSelectedOrigin,
                         modifier =
                             Modifier
                                 .weight(1f)
@@ -321,32 +382,54 @@ private val Position.cellOffset: Offset get() = Offset(column.toFloat(), row.toF
  * combat loss shows a price on every spawn its owner could buy it back onto, since either one
  * will do.
  */
-@Composable
-private fun KnockedOutBlenders(state: MatchUiState) {
-    for (blender in state.blendersAwaitingRespawn) {
-        val home = blender.home
-        if (home != null) {
-            key("respawn", blender.id) {
-                FadingIn(modifier = Modifier.boardCell(home, state.isRotated)) {
-                    DestroyedBlenderMarker(
-                        seat = state.seat(blender.owner),
-                        isPurchasable = false,
-                        modifier = Modifier.fillMaxSize(),
-                        turnsUntilReturn = state.displayState.turnsUntilRespawn(blender),
-                    )
-                }
+private data class BlenderMarker(
+    /** Which marker this is from one board to the next, so it fades in only once. */
+    val key: Any,
+    val square: Position,
+    val seat: PlayerSeat,
+    val isPurchasable: Boolean,
+    val turnsUntilReturn: Int? = null,
+)
+
+private fun MatchUiState.blenderMarkers(): List<BlenderMarker> {
+    val countdowns =
+        blendersAwaitingRespawn.mapNotNull { blender ->
+            blender.home?.let { home ->
+                BlenderMarker(
+                    key = "respawn" to blender.id,
+                    square = home,
+                    seat = seat(blender.owner),
+                    isPurchasable = false,
+                    turnsUntilReturn = displayState.turnsUntilRespawn(blender),
+                )
             }
         }
-    }
     // Two lost blenders are each offered on both spawns; one marker per spawn is enough.
-    val purchasableSpawns = remember(state) { state.purchasableSpawns.distinct() }
-    for (spawn in purchasableSpawns) {
-        key("buy-back", spawn) {
-            FadingIn(modifier = Modifier.boardCell(spawn, state.isRotated)) {
+    val prices =
+        purchasableSpawns.distinct().map { spawn ->
+            BlenderMarker(
+                key = "buy-back" to spawn,
+                square = spawn,
+                seat = seat(displayState.activePlayer),
+                isPurchasable = true,
+            )
+        }
+    return countdowns + prices
+}
+
+@Composable
+private fun KnockedOutBlenders(
+    markers: List<BlenderMarker>,
+    isRotated: Boolean,
+) {
+    for (marker in markers) {
+        key(marker.key) {
+            FadingIn(modifier = Modifier.boardCell(marker.square, isRotated)) {
                 DestroyedBlenderMarker(
-                    seat = state.seat(state.displayState.activePlayer),
-                    isPurchasable = true,
+                    seat = marker.seat,
+                    isPurchasable = marker.isPurchasable,
                     modifier = Modifier.fillMaxSize(),
+                    turnsUntilReturn = marker.turnsUntilReturn,
                 )
             }
         }
@@ -396,24 +479,26 @@ private class PieceMemory {
     val leaving = mutableStateMapOf<PieceId, PieceLook>()
 }
 
+private fun MatchUiState.pieceLooks(): Map<PieceId, PieceLook> =
+    piecesOnBoard
+        .mapNotNull { piece ->
+            piece.position?.let { position ->
+                piece.id to
+                    PieceLook(
+                        kind = piece.kind,
+                        seat = seat(piece.owner),
+                        isGolden = displayState.isGolden(piece.id),
+                        cell = position.displayed(isRotated).cellOffset,
+                    )
+            }
+        }.toMap()
+
 @Composable
 private fun Pieces(
-    state: MatchUiState,
+    onBoard: Map<PieceId, PieceLook>,
+    selectedPieceId: PieceId?,
     reduceMotion: Boolean,
 ) {
-    val onBoard =
-        state.piecesOnBoard
-            .mapNotNull { piece ->
-                piece.position?.let { position ->
-                    piece.id to
-                        PieceLook(
-                            kind = piece.kind,
-                            seat = state.seat(piece.owner),
-                            isGolden = state.displayState.isGolden(piece.id),
-                            cell = position.displayed(state.isRotated).cellOffset,
-                        )
-                }
-            }.toMap()
     val memory = remember { PieceMemory() }
     val shown = memory.shown
     val departed = shown.orEmpty().filterKeys { it !in onBoard }
@@ -430,7 +515,7 @@ private fun Pieces(
         key(id) {
             BoardPiece(
                 look = look,
-                isSelected = state.selectedPieceId == id,
+                isSelected = selectedPieceId == id,
                 // Nothing animates in the first time the board is shown.
                 arrives = shown != null && id !in shown,
                 isLeaving = id in leaving,
@@ -509,12 +594,13 @@ private fun BoardPiece(
  */
 @Composable
 private fun Bursts(
-    state: MatchUiState,
+    bursts: List<BlendBurst>,
+    isRotated: Boolean,
     reduceMotion: Boolean,
     onBurstPlaced: (id: Long, centreInRoot: Offset) -> Unit,
     onBurstFinished: (id: Long) -> Unit,
 ) {
-    for (burst in state.blendBursts) {
+    for (burst in bursts) {
         key(burst.id) {
             val finished by rememberUpdatedState(onBurstFinished)
             LaunchedEffect(Unit) {
@@ -527,7 +613,7 @@ private fun Bursts(
                 reduceMotion = reduceMotion,
                 modifier =
                     Modifier
-                        .boardCell(burst.position, state.isRotated)
+                        .boardCell(burst.position, isRotated)
                         .onGloballyPositioned { onBurstPlaced(burst.id, it.boundsInRoot().center) },
             )
         }

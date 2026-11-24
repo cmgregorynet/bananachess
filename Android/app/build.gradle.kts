@@ -47,6 +47,10 @@ kotlin {
     jvmToolchain(libs.versions.jvm.get().toInt())
 }
 
+composeCompiler {
+    stabilityConfigurationFiles.add(layout.projectDirectory.file("compose-stability.conf"))
+}
+
 dependencies {
     implementation(project(":engine"))
 
