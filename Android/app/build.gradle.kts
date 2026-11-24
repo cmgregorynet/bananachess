@@ -4,6 +4,14 @@ plugins {
     alias(libs.plugins.kotlin.serialization)
 }
 
+// Release signing comes from Gradle properties or the environment, never from the repo. Without
+// all four the release build is produced unsigned.
+val releaseSigning =
+    listOf("BANANA_KEYSTORE", "BANANA_KEYSTORE_PASSWORD", "BANANA_KEY_ALIAS", "BANANA_KEY_PASSWORD")
+        .associateWith { name -> providers.gradleProperty(name).orElse(providers.environmentVariable(name)).orNull }
+        .takeIf { values -> values.values.all { !it.isNullOrBlank() } }
+        ?.mapValues { (_, value) -> checkNotNull(value) }
+
 android {
     namespace = "com.charlesbarton.bananachess"
     compileSdk {
@@ -18,14 +26,28 @@ android {
         applicationId = "com.charlesbarton.bananachess"
         minSdk = libs.versions.minSdk.get().toInt()
         targetSdk = libs.versions.targetSdk.get().toInt()
+        // The same as iOS: marketing version 0.1, build 1.
         versionCode = 1
-        versionName = "1.0"
+        versionName = "0.1"
+    }
+
+    signingConfigs {
+        if (releaseSigning != null) {
+            create("release") {
+                storeFile = file(releaseSigning.getValue("BANANA_KEYSTORE"))
+                storePassword = releaseSigning.getValue("BANANA_KEYSTORE_PASSWORD")
+                keyAlias = releaseSigning.getValue("BANANA_KEY_ALIAS")
+                keyPassword = releaseSigning.getValue("BANANA_KEY_PASSWORD")
+            }
+        }
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
+            if (releaseSigning != null) signingConfig = signingConfigs.getByName("release")
         }
     }
 

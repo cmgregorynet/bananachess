@@ -2,8 +2,12 @@ package com.charlesbarton.bananachess
 
 import android.app.Application
 
-/** Owns the [AppContainer]: one per process, made the first time something asks for it. */
-class BananaChessApplication : Application() {
+/**
+ * Owns the [AppContainer]: one per process, made the first time something asks for it.
+ *
+ * Open only so the release unit tests can extend it (src/testRelease); nothing else should.
+ */
+open class BananaChessApplication : Application() {
     private val lazyContainer = lazy { AppContainer.create(this) }
 
     val container: AppContainer by lazyContainer
