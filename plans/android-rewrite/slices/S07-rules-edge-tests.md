@@ -1,0 +1,80 @@
+---
+id: S07
+title: Port the Swift engine tests the fixture does not cover
+layer: test
+points: 3
+depends_on: [S06]
+touches: [Android/engine/src/test/kotlin/com/charlesbarton/bananachess/engine/rulesported/, Android/engine/src/test/kotlin/com/charlesbarton/bananachess/engine/support/BoardBuilder.kt]
+status: done
+branch: slice/android-rewrite/S07
+started: 2026-11-23T13:16
+completed: 2026-11-23T13:26
+actual_points: 3
+review_fixes: one loop simplified
+blocked_reason:
+---
+
+# S07 — Port the Swift engine tests the fixture does not cover
+
+## Goal
+The fixture proves ordinary play. This slice ports the hand-written Swift tests for positions that random play rarely reaches, so a future rules change in Kotlin fails loudly.
+
+## Context
+- Swift tests: `Engine/Tests/BananaChessEngineTests/` — `SetupAndMovementTests.swift` (31), `ScoringTests.swift` (35), `WildcardTests.swift` (49), `EndStateAndDeterminismTests.swift` (16), `BlenderamaDefenceTests.swift` (2). `TestSupport.swift` provides `BoardBuilder` (custom positions with auto-numbered ids `{owner}.fruit.N` / `{owner}.blender.N`, `destroyedBlender`, `state(active:ruleSet:scores:)`), `position(r, c)`, `GameState.move(id, to:)`, `idleTransition`, `advanceTurns`, and event filters.
+- `OnlineTests.swift` and `CPUTests.swift` belong to S10 and S09; do not port them here.
+- Port a test when it checks a rule or an edge case. Skip a test that only restates something the 108-game replay already proves (for example, the standard opening layout). Record what was skipped and why in the slice report.
+- Events that never occur in the fixture and so need direct tests: `turnPassed`, `blenderRespawned`, and `RulesError` cases.
+
+### Toolchain facts established by S01 (read before writing code)
+- Versions are pinned in `Android/gradle/libs.versions.toml`: Gradle 9.9.2, AGP 9.5.2 (built-in Kotlin, so `:app` has no `kotlin-android` plugin), Kotlin 2.4.21, compileSdk 37.2, targetSdk 37, minSdk 26, Compose BOM 2026.11.01.
+- `:engine` tests use JUnit Jupiter 6 with `kotlin.test`. `:app` tests use JUnit 4 with Robolectric 4.18.1, which simulates **API 35** (`Android/app/src/test/resources/robolectric.properties`).
+- Compose UI tests use the **v2** rule: `androidx.compose.ui.test.junit4.v2.createAndroidComposeRule` (v1 is deprecated and warns).
+- ktlint uses the `ktlint_official` style: in `.kt` files a chain of four or more calls is wrapped one call per line; `@Composable` functions are exempt from function naming. Run `./gradlew ktlintFormat` before checking.
+- Lint treats warnings as errors.
+- The build cache is on. To be sure tests really ran, add `--no-build-cache --rerun-tasks` to the Verification command at least once before reporting.
+- Machine: `platforms;android-37.0`, `platforms;android-37.2`, `build-tools;37.0.0` and `platform-tools` are installed. Do not install or remove SDK packages.
+
+### Common context (the same in every slice of this plan)
+- Read `plans/android-rewrite/RESEARCH.md` first. It maps the existing code and lists the exactness rules.
+- This repo holds one game three times: the Swift engine in `Engine/` (**the specification**), the iOS app in `App/`, and a TypeScript port in `Web/src/engine/` (a useful second reference that already passes the fixture). This plan adds a fourth: a native Android app in `Android/`.
+- Gradle modules: `:engine` is pure Kotlin/JVM, package `com.charlesbarton.bananachess.engine`, sources under `Android/engine/src/main/kotlin/com/charlesbarton/bananachess/engine/`, and must never import `android.*` or `androidx.*`. `:app` is the Compose app, package `com.charlesbarton.bananachess`, sources under `Android/app/src/main/kotlin/com/charlesbarton/bananachess/`, in feature-first folders (`art/`, `home/`, `match/`, `rules/`, `link/`, `settings/`).
+- Environment: run `source Android/scripts/env.sh` before any Gradle command. It exports `JAVA_HOME` and `ANDROID_HOME`. Run Gradle from `Android/` with `./gradlew`.
+- Conventions: immutable `data class` values and `sealed interface` hierarchies (the Swift code relies on value semantics; never share a mutable list between states); ViewModels own all observable state and expose it as `StateFlow`; constructor injection with a default production instance; no DI container; no repository wrappers; an interface only when a test needs a fake; dispatchers are injected and named in code, never implied; no `!!` on production paths; comments only where the reason is not obvious; one error type per layer with user-readable messages.
+- Dependencies: every library is already declared in `Android/gradle/libs.versions.toml` by S01. Do not add one. If the slice cannot be done without a new dependency, stop and report it.
+- Do not edit `plans/`, `App/`, `Web/` or `Engine/` unless this slice's Scope says so.
+- User-facing copy is ported verbatim from the iOS source unless this slice says otherwise.
+
+## Scope
+- `BoardBuilder` and helpers in `engine/src/test/.../support/BoardBuilder.kt`.
+- Ported tests under `engine/src/test/.../rulesported/`, one Kotlin file per Swift file, keeping the Swift test names recognisable.
+- At minimum: every wildcard test, every end-state and determinism test, both Blenderama defence tests, and the scoring and movement tests that build custom positions.
+
+## Out of Scope
+- Changing production engine code. If a ported test fails, report the exact case; a rules fix is a follow-up slice, not a silent edit here.
+
+## Acceptance Criteria
+- [ ] At least 100 ported tests pass.
+- [ ] Every skipped Swift test is listed with a one-line reason in the slice report.
+- [ ] No file under `Android/engine/src/main/` is changed.
+- [ ] Build and existing tests green.
+
+## Verification
+```bash
+source Android/scripts/env.sh
+cd Android && ./gradlew :engine:test ktlintCheck
+cd .. && git diff --stat plan/android-rewrite...HEAD -- Android/engine/src/main | /usr/bin/grep -c . || true   # expect 0
+```
+
+## Estimate Rationale
+3: mostly mechanical, but about 130 tests and a test builder to translate.
+
+## Actuals
+- **Actual points:** 3. The estimate was 3.
+- **What took longer / shorter than expected:** Every ported test passed on the first run, so there was no debugging. Reading the engine and deciding what the existing Kotlin tests already cover took the time.
+- **Surprises / unknowns that surfaced:**
+  - 121 Swift tests ported (138 JUnit tests); none failed and none is disabled. Production code untouched.
+  - **One scope item not met:** "both Blenderama defence tests". Both compare `Evaluation.score`, which was not in Kotlin when this slice branched. One is skipped and one is ported for its rules half only. Closed by S25.
+  - Skipped because they need the CPU: `randomBoardsPlayThrough`, `wrappedMatchesTerminate`, `eventReplayHoldsAcrossAMatch`, `nothingRunsForever`. Skipped because they need the payload codec: `setupSurvivesEncoding`, `wrapSurvivesEncoding`, `codableRoundTrip`, `encodingIsStable`. Closed by S25.
+  - Skipped as exact duplicates of existing Kotlin tests: `newGameSetup`, `mirroredFruitOrder`, `randomNeverDealsAFreeDelivery`.
+  - There is no Swift test for "neither player can act"; it stays covered only by Kotlin-written tests.
+- **Review fixes applied:** One loop simplified. Nothing else found.

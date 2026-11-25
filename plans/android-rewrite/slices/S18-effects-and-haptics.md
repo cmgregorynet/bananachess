@@ -1,0 +1,92 @@
+---
+id: S18
+title: Add blend bursts, splatter, piece transitions and haptics
+layer: ui
+points: 3
+depends_on: [S17]
+touches: [Android/app/src/main/kotlin/com/charlesbarton/bananachess/art/BlendEffects.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/AndroidMatchHaptics.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/BoardView.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/MatchScreen.kt, Android/app/src/test/kotlin/com/charlesbarton/bananachess/art/BlendEffectsTest.kt, Android/app/src/test/kotlin/com/charlesbarton/bananachess/match/MatchHapticsTest.kt]
+status: done
+branch: slice/android-rewrite/S18
+started: 2026-11-23T17:11
+completed: 2026-11-23T17:25
+actual_points: 5
+review_fixes: burst-centre map pruned; name clash fixed
+blocked_reason:
+---
+
+# S18 — Add blend bursts, splatter, piece transitions and haptics
+
+## Goal
+The juice: fruit bursts into droplets, sometimes splatters the screen, and the phone taps back.
+
+## Context
+- iOS sources: `App/BananaChess/Art/BlendEffects.swift` (304 lines), `App/BananaChess/Match/Haptics.swift`. Burst and splatter **data** already exists in `MatchUiState` (S15); this slice draws it and retires it.
+- **Droplets**, generated from the effect's seed with the engine's `SplitMix64`: burst = 11 droplets evenly spaced with ±0.30 rad jitter, distance 0.55–1.15, size 0.13–0.30, spin ±1.2; splatter = 34 droplets, ±0.45 rad jitter, distance `rand(0.05…1)^1.7 × 0.95`, size 0.015–0.085, spin ±2. Droplet shape: 9 lobes at radius × rand(0.58…1) joined by quadratic curves through the midpoints.
+- **Burst** (`:104-181`): a ring stroke (tint 0.5, width 0.09 × side, scale 0.2 + 1.35 × ring, alpha (1 − ring) × 0.85), a blurred glow (tint 0.4), and the droplets (offset = direction × distance × spread, rotation spin × spread, scale 1 − 0.5 × spread, alpha pulp). Curves: `spread` springs to 1 over 0.55 s; `pulp` reaches 1 in 0.06 s, holds 0.16 s, fades over 0.36 s; `ring` eases to 1 over 0.5 s. Tint is `Palette.wash(kind)`. The burst is removed 750 ms after it appears.
+- **Splatter** (`:188-258`): covers the whole screen, multiply-blended, centred on the square where the blend happened; `reach` springs to 1 over 0.26 s then holds 1.2 s; `ink` rises to 0.5 in 0.14 s, holds 0.42 s, fades over 0.9 s. Removed after 1,700 ms.
+- **Piece removal** (`:263-286`): a blended piece shrinks to 0.22, rotates 150° and fades; a new piece appears from scale 0.4.
+- **Reduced motion** (system animator duration scale = 0): no droplet travel (a brief tint fade instead), calm piece transitions (scale 0.7 + fade), no splatter spring.
+- **Haptics** (`Haptics.swift`), through `View.performHapticFeedback` constants so no vibrate permission is needed, honouring the system haptic setting: selection → a light tick; moved → light; blenderBattle → heavy; blenderDestroyed / smoothie → a firm reject-style tap; restored / bananaReturned → soft; blended → medium; delivered / smoothiePoured / gameEnded → a confirm pattern. Choose the closest available constant for the device's API level and fall back gracefully on API 26.
+- There is no sound in this game.
+- **Established by S12:** `Modifier.clip(shape)` and `graphicsLayer { clip = true }` each add a semantics node in this Compose version. Anything that must stay out of the accessibility tree clips in the draw phase instead (see the tray in `art/PieceArtwork.kt`). `PieceArtwork(kind, seat, modifier, isGolden, showsTray)` takes named arguments, needs a bounded size, and its golden halo draws outside its bounds. `isReducedMotion(context)` lives in `art/PieceArtwork.kt`.
+- **Established by S15 (read every file in `Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/` and `Android/app/src/test/kotlin/com/charlesbarton/bananachess/match/MatchTestSupport.kt` first):** `MatchViewModel(mode, initialState, blendEffects, haptics, reduceMotion, scope)` exposes `state: StateFlow<MatchUiState>` and `tap(position)`, `confirmSelfBlend()`, `cancelSelfBlend()`, `dismissError()`, `onSceneInactive()`, `onSceneActive()`, `retireBurst(id)`, `retireSplatter(id)`, `requestRestart()`, `cancelRestart()`, `restart()`, `undo()`, and internal `perform(action)`. `MatchUiState` carries everything a view needs as derived properties (`isRotated`, `seat(player)`, `scoreboard(player)`, `turnIndicatorText`, `resultText`, `resultDetail`, `piecesOnBoard`, `blenderHomes`, `purchasableSpawns`, `blendersAwaitingRespawn`, `deliveryEdge(position)`, `selectedSquare`, `legalDestinations`, `flash`, `blendBursts`, `splatter`, `pendingSelfBlend`, `errorMessage`, `canUndo`, `canPlayAgain`) and `squareDescription(position)`. Views draw; the view model decides. Extension points: CPU turns start at the end of the private `finishTimeline()`, in `restart()` and at construction, and reply through `perform(action)`; snapshots save at the same places; an incoming link move sets `displayState` to the position before it and calls the private `animate(events)`.
+- **Established by S16:** add each burst in `BoardView` at the marked spot outside the clipped board: `key(burst.id) { BlendBurstView(…, modifier = Modifier.boardCell(burst.position, state.isRotated)) }`. `boardCell` sizes and places a child on one square by real layout, so `onGloballyPositioned` on that child gives the square's on-screen centre for the splatter origin; hoist it through a new callback parameter on `BoardView`. Burst nodes must add no semantics or `BoardViewTest`'s accessibility-tree test fails. Pieces currently have no enter or exit transition; the "pulped" transition is yours.
+- **Established by S17 (read `match/MatchScreen.kt`, `ResultOverlay.kt`, `MatchDialogs.kt`, `BananaChessApp.kt`, and `test/.../match/MatchScreenTest.kt`):** `MatchScreen(viewModel, settings, onExit, onShowRules, modifier, showsDebugControls)`. The one production construction site of the view model is `newMatchViewModel(start, reduceMotion)` in `BananaChessApp.kt`; it is scoped to the Match back-stack entry, so changing `graph.matchStart.current` while a match is showing does not swap the match (pop and re-navigate instead). Commented plug-in spots exist in `MatchScreen` for the splatter (S18), the thinking indicator (S19) and the send button (S22). Once the match is over the result scrim swallows taps beneath it; anything that must stay usable then goes in `ResultOverlay`'s `notice` slot. `PaperAlertDialog(title, message, confirmLabel, onConfirm, onDismiss, dismissLabel = null)` is a one-button alert. `MatchTags.TURN_INDICATOR`, `ERROR_BANNER`, `RESULT`.
+- **Keep Compose tests fast:** `composeRule.waitForIdle()` after every move of a whole match took over three minutes under load and timed out. Drive long sequences through the view model with `scope.settle()` and call `waitForIdle()` once at the end, as `MatchScreenTest`'s played-out test now does.
+- **Added from the architecture review (findings M2 and S4), sent to the worker mid-slice:** the view model owns effect lifetime (bursts and splatter are cleared by the view model even if the view never calls `retire*`), and haptics never hold a `View` beyond composition (attached and detached by `MatchScreen`).
+
+### Toolchain facts established by S01 (read before writing code)
+- Versions are pinned in `Android/gradle/libs.versions.toml`: Gradle 9.9.2, AGP 9.5.2 (built-in Kotlin, so `:app` has no `kotlin-android` plugin), Kotlin 2.4.21, compileSdk 37.2, targetSdk 37, minSdk 26, Compose BOM 2026.11.01.
+- `:engine` tests use JUnit Jupiter 6 with `kotlin.test`. `:app` tests use JUnit 4 with Robolectric 4.18.1, which simulates **API 35** (`Android/app/src/test/resources/robolectric.properties`).
+- Compose UI tests use the **v2** rule: `androidx.compose.ui.test.junit4.v2.createAndroidComposeRule` (v1 is deprecated and warns).
+- ktlint uses the `ktlint_official` style: in `.kt` files a chain of four or more calls is wrapped one call per line; `@Composable` functions are exempt from function naming. Run `./gradlew ktlintFormat` before checking.
+- Lint treats warnings as errors.
+- The build cache is on. To be sure tests really ran, add `--no-build-cache --rerun-tasks` to the Verification command at least once before reporting.
+- Machine: `platforms;android-37.0`, `platforms;android-37.2`, `build-tools;37.0.0` and `platform-tools` are installed. Do not install or remove SDK packages.
+
+### Common context (the same in every slice of this plan)
+- Read `plans/android-rewrite/RESEARCH.md` first. It maps the existing code and lists the exactness rules.
+- This repo holds one game three times: the Swift engine in `Engine/` (**the specification**), the iOS app in `App/`, and a TypeScript port in `Web/src/engine/` (a useful second reference that already passes the fixture). This plan adds a fourth: a native Android app in `Android/`.
+- Gradle modules: `:engine` is pure Kotlin/JVM, package `com.charlesbarton.bananachess.engine`, sources under `Android/engine/src/main/kotlin/com/charlesbarton/bananachess/engine/`, and must never import `android.*` or `androidx.*`. `:app` is the Compose app, package `com.charlesbarton.bananachess`, sources under `Android/app/src/main/kotlin/com/charlesbarton/bananachess/`, in feature-first folders (`art/`, `home/`, `match/`, `rules/`, `link/`, `settings/`).
+- Environment: run `source Android/scripts/env.sh` before any Gradle command. It exports `JAVA_HOME` and `ANDROID_HOME`. Run Gradle from `Android/` with `./gradlew`.
+- Conventions: immutable `data class` values and `sealed interface` hierarchies (the Swift code relies on value semantics; never share a mutable list between states); ViewModels own all observable state and expose it as `StateFlow`; constructor injection with a default production instance; no DI container; no repository wrappers; an interface only when a test needs a fake; dispatchers are injected and named in code, never implied; no `!!` on production paths; comments only where the reason is not obvious; one error type per layer with user-readable messages.
+- Dependencies: every library is already declared in `Android/gradle/libs.versions.toml` by S01. Do not add one. If the slice cannot be done without a new dependency, stop and report it.
+- Do not edit `plans/`, `App/`, `Web/` or `Engine/` unless this slice's Scope says so.
+- User-facing copy is ported verbatim from the iOS source unless this slice says otherwise.
+
+## Scope
+- `art/BlendEffects.kt`: droplet generation, `BlendBurstView`, `SplatterView`, the pulped enter/exit transitions.
+- Draw bursts above the board in `BoardView` and the splatter above everything in `MatchScreen`; retire each after its lifetime through the view model.
+- `AndroidMatchHaptics` implementing S15's `MatchHaptics`, provided to the view model from the screen.
+- Tests: droplet generation is deterministic per seed and within the stated ranges; a burst is retired after 750 ms and a splatter after 1,700 ms of virtual time; the event → haptic mapping; under reduced motion no splatter spring runs.
+
+## Out of Scope
+- Changing when effects are spawned (S15 owns that).
+- Sound.
+
+## Acceptance Criteria
+- [ ] Blending a fruit in a Compose test produces a burst node that disappears after its lifetime.
+- [ ] With `BlendEffectPolicy.Always` a splatter appears, and with `Never` it does not.
+- [ ] The app declares no `VIBRATE` permission.
+- [ ] Tests added; build, lint and existing tests green.
+
+## Verification
+```bash
+source Android/scripts/env.sh
+cd Android && ./gradlew :app:testDebugUnitTest :app:lintDebug ktlintCheck :app:assembleDebug
+cd .. && /usr/bin/grep -c "VIBRATE" Android/app/src/main/AndroidManifest.xml || true   # expect 0
+```
+
+## Estimate Rationale
+3: animation curves to match by eye, and haptic constants that differ by API level.
+
+## Actuals
+- **Actual points:** 5. The estimate was 3.
+- **What took longer / shorter than expected:** Longer: keeping a leaving piece drawn after it drops out of the state without a one-frame gap, and the two requirements added mid-slice from the architecture review (view-model-owned effect lifetime; haptics attached and detached by the screen). Shorter: the haptic constants and lint.
+- **Surprises / unknowns that surfaced:**
+  - Haptics use `View.performHapticFeedback` (no vibrate permission, honours the system setting), with newer constants behind API checks: reject and confirm from API 30, a soft release from API 27, older fallbacks below.
+  - Droplet randomness copies Swift's `Double.random(in:)` draw, so a seed should throw the same pulp as on iOS; there are no Swift reference values to confirm it.
+  - Two curves are approximations of SwiftUI's keyframe ring and its bouncy and snappy springs.
+  - The burst and splatter run on frame clocks, not Compose animations, so the reduced-motion fade is still seen when system animations are off.
+  - Outside `touches` (authorised): `MatchViewModel.kt`, `MatchUiState.kt`, `MatchViewModelTest.kt`.
+- **Review fixes applied:** The screen's map of burst centres is pruned to live bursts so it cannot grow per blend; a private composable renamed to avoid a clash with the `Splatter` data class.

@@ -1,0 +1,66 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    The banana on its clay tray, as the game draws player one's banana (art/PieceArtwork.kt,
+    art/PieceShapes.kt). The tray is 60dp across, inside the 66dp safe zone. The banana is drawn
+    larger than on the board (0.06 padding, not 0.13) so it still reads at launcher size, and
+    centred, since the crescent sits high in its unit square.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- Tray: clay light to clay deep, lit from the top-left corner. -->
+    <path android:pathData="M54,24a30,30 0,1 1,0 60a30,30 0,1 1,0 -60z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:centerX="24"
+                android:centerY="24"
+                android:endColor="#CFA987"
+                android:gradientRadius="54"
+                android:startColor="#EFD3B6"
+                android:type="radial" />
+        </aapt:attr>
+    </path>
+    <!-- Pencil ring, wholly inside the tray. -->
+    <path
+        android:pathData="M54,24.9a29.1,29.1 0,1 1,0 58.2a29.1,29.1 0,1 1,0 -58.2z"
+        android:strokeWidth="1.8"
+        android:strokeColor="#BF61524D" />
+    <!-- Banana wash. -->
+    <path android:pathData="M33.41,68.78 C37.63,44.5 57.7,38.69 73.54,45.55 C75.12,43.97 76.18,42.91 76.18,42.38 C75.12,46.61 74.06,48.72 73.01,49.78 C60.34,49.78 43.44,60.86 33.41,68.78Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:endX="76.18"
+                android:endY="68.78"
+                android:startX="33.41"
+                android:startY="42.38"
+                android:type="linear">
+                <item
+                    android:color="#B8DFC77E"
+                    android:offset="0" />
+                <item
+                    android:color="#FFDFC77E"
+                    android:offset="0.5" />
+                <item
+                    android:color="#EBDFC77E"
+                    android:offset="1" />
+            </gradient>
+        </aapt:attr>
+    </path>
+    <!-- The bruised inner curve: the same crescent at 0.86, pinned bottom-left, inside the banana. -->
+    <group>
+        <clip-path android:pathData="M33.41,68.78 C37.63,44.5 57.7,38.69 73.54,45.55 C75.12,43.97 76.18,42.91 76.18,42.38 C75.12,46.61 74.06,48.72 73.01,49.78 C60.34,49.78 43.44,60.86 33.41,68.78Z" />
+        <path
+            android:fillColor="#59BDA99D"
+            android:pathData="M32.59,71 C36.23,50.11 53.48,45.12 67.1,51.02 C68.47,49.66 69.38,48.75 69.38,48.3 C68.47,51.93 67.56,53.75 66.65,54.65 C55.75,54.65 41.22,64.19 32.59,71Z" />
+    </group>
+    <!-- Ink outline. -->
+    <path
+        android:pathData="M33.41,68.78 C37.63,44.5 57.7,38.69 73.54,45.55 C75.12,43.97 76.18,42.91 76.18,42.38 C75.12,46.61 74.06,48.72 73.01,49.78 C60.34,49.78 43.44,60.86 33.41,68.78Z"
+        android:strokeWidth="1.6"
+        android:strokeColor="#D961524D"
+        android:strokeLineCap="round"
+        android:strokeLineJoin="round" />
+</vector>

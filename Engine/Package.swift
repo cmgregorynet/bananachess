@@ -7,6 +7,7 @@ let package = Package(
     products: [
         .library(name: "BananaChessEngine", targets: ["BananaChessEngine"]),
         .executable(name: "ConformanceFixtures", targets: ["ConformanceFixtures"]),
+        .executable(name: "GoldenFixtures", targets: ["GoldenFixtures"]),
     ],
     targets: [
         .target(
@@ -17,6 +18,12 @@ let package = Package(
         // specification; anything claiming to be Banana Chess has to reproduce this.
         .executableTarget(
             name: "ConformanceFixtures",
+            dependencies: ["BananaChessEngine"],
+            swiftSettings: [.swiftLanguageMode(.v6)]
+        ),
+        // Writes the link, hash and evaluation fixtures the Android port is tested against.
+        .executableTarget(
+            name: "GoldenFixtures",
             dependencies: ["BananaChessEngine"],
             swiftSettings: [.swiftLanguageMode(.v6)]
         ),

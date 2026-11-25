@@ -1,0 +1,86 @@
+---
+id: S16
+title: Build the board composable
+layer: ui
+points: 3
+depends_on: [S15, S12]
+touches: [Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/BoardView.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/SquareView.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/DestroyedBlenderMarker.kt, Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/FlashPill.kt, Android/app/src/test/kotlin/com/charlesbarton/bananachess/match/BoardViewTest.kt]
+status: done
+branch: slice/android-rewrite/S16
+started: 2026-11-23T13:31
+completed: 2026-11-23T13:42
+actual_points: 3
+review_fixes: one marker per spawn; board pinned LTR; realistic test screen size
+blocked_reason:
+---
+
+# S16 — Build the board composable
+
+## Goal
+The 6×6 board: squares, pieces that travel between them, legal-move dots, wrap seams, buy-back markers and the flash pill, fully usable with TalkBack.
+
+## Context
+- iOS source: `App/BananaChess/Match/BoardView.swift` (383 lines). State comes from S15's `MatchUiState`; drawing uses S11 and S12.
+- Square board, cell = side / 6. Layers (`:15-37`): ground (squareLight + grain 0.4), squares, destroyed-blender markers, pieces — clipped to a 6 dp rounded rect; flash on top, unclipped; an outer border (radius 10, ink 0.7, 2 dp, outset 6).
+- **Squares are laid out in a real grid** (rows of cells), never positioned by offset. This is a recorded accessibility decision (`DECISIONS.md` §Architecture, "Squares are laid out, not offset"): each square is one clickable node with `testTag` `square_<row>_<col>` in **engine coordinates** (unaffected by rotation) and the content description from `SquareDescription`.
+- **Square** (`:318-358`): dark when (row + column) is even; delivery-row hatching (diagonal lines, 7 dp step; bottom seat sand 0.75 at 1.2, top seat fogWater 0.75 at 0.8); 0.7 dp ink 0.18 border; blender home = dashed circle (ink 0.45, 1.4, dash 3/3, padding 6); selected origin = amber 0.16 fill; legal move = 12 dp amber 0.85 dot with a 1 dp ink 0.4 ring.
+- **Wrap seams** (`:59-87`): amber 0.55 dashed lines (2.4 wide, round caps, dash 5/5) inset 1.2 dp; left and right when columns wrap, top and bottom too when rows wrap.
+- **Pieces** (`:134-156`): drawn in a separate layer positioned by animated offset so they slide between squares; not clickable and hidden from accessibility; a selected piece scales 1.08 with a 3 dp amber ring at 0.94 × cell. Movement spring ≈ response 0.34 / damping 0.78; returns (restore, banana return) ≈ 0.5 / 0.62; a short fade when reduced motion is on.
+- **DestroyedBlenderMarker** (`:264-304`), 0.82 of the cell: tray tint 0.28 circle, greyscale ghost blender (alpha 0.4 if purchasable, else 0.28), dashed ring (amber if purchasable), and either a "−3" pill (purchasable) or a countdown number.
+- **Flash pill** (`:222-242`): small serif semibold text in a cream capsule with a 1.5 dp amber border, offset (+0.5 cell, −0.15 cell) from its square, fading in with an 8 dp rise.
+- **Rotation** (`:248-259`): when `isRotated`, the board is drawn turned 180° so the local player's pieces are at the bottom; piece drawings and text stay upright.
+- **Established by S12:** `Modifier.clip(shape)` and `graphicsLayer { clip = true }` each add a semantics node in this Compose version. Anything that must stay out of the accessibility tree clips in the draw phase instead (see the tray in `art/PieceArtwork.kt`). `PieceArtwork(kind, seat, modifier, isGolden, showsTray)` takes named arguments, needs a bounded size, and its golden halo draws outside its bounds. `isReducedMotion(context)` lives in `art/PieceArtwork.kt`.
+- **Established by S15 (read every file in `Android/app/src/main/kotlin/com/charlesbarton/bananachess/match/` and `Android/app/src/test/kotlin/com/charlesbarton/bananachess/match/MatchTestSupport.kt` first):** `MatchViewModel(mode, initialState, blendEffects, haptics, reduceMotion, scope)` exposes `state: StateFlow<MatchUiState>` and `tap(position)`, `confirmSelfBlend()`, `cancelSelfBlend()`, `dismissError()`, `onSceneInactive()`, `onSceneActive()`, `retireBurst(id)`, `retireSplatter(id)`, `requestRestart()`, `cancelRestart()`, `restart()`, `undo()`, and internal `perform(action)`. `MatchUiState` carries everything a view needs as derived properties (`isRotated`, `seat(player)`, `scoreboard(player)`, `turnIndicatorText`, `resultText`, `resultDetail`, `piecesOnBoard`, `blenderHomes`, `purchasableSpawns`, `blendersAwaitingRespawn`, `deliveryEdge(position)`, `selectedSquare`, `legalDestinations`, `flash`, `blendBursts`, `splatter`, `pendingSelfBlend`, `errorMessage`, `canUndo`, `canPlayAgain`) and `squareDescription(position)`. Views draw; the view model decides. Extension points: CPU turns start at the end of the private `finishTimeline()`, in `restart()` and at construction, and reply through `perform(action)`; snapshots save at the same places; an incoming link move sets `displayState` to the position before it and calls the private `animate(events)`.
+
+### Toolchain facts established by S01 (read before writing code)
+- Versions are pinned in `Android/gradle/libs.versions.toml`: Gradle 9.9.2, AGP 9.5.2 (built-in Kotlin, so `:app` has no `kotlin-android` plugin), Kotlin 2.4.21, compileSdk 37.2, targetSdk 37, minSdk 26, Compose BOM 2026.11.01.
+- `:engine` tests use JUnit Jupiter 6 with `kotlin.test`. `:app` tests use JUnit 4 with Robolectric 4.18.1, which simulates **API 35** (`Android/app/src/test/resources/robolectric.properties`).
+- Compose UI tests use the **v2** rule: `androidx.compose.ui.test.junit4.v2.createAndroidComposeRule` (v1 is deprecated and warns).
+- ktlint uses the `ktlint_official` style: in `.kt` files a chain of four or more calls is wrapped one call per line; `@Composable` functions are exempt from function naming. Run `./gradlew ktlintFormat` before checking.
+- Lint treats warnings as errors.
+- The build cache is on. To be sure tests really ran, add `--no-build-cache --rerun-tasks` to the Verification command at least once before reporting.
+- Machine: `platforms;android-37.0`, `platforms;android-37.2`, `build-tools;37.0.0` and `platform-tools` are installed. Do not install or remove SDK packages.
+
+### Common context (the same in every slice of this plan)
+- Read `plans/android-rewrite/RESEARCH.md` first. It maps the existing code and lists the exactness rules.
+- This repo holds one game three times: the Swift engine in `Engine/` (**the specification**), the iOS app in `App/`, and a TypeScript port in `Web/src/engine/` (a useful second reference that already passes the fixture). This plan adds a fourth: a native Android app in `Android/`.
+- Gradle modules: `:engine` is pure Kotlin/JVM, package `com.charlesbarton.bananachess.engine`, sources under `Android/engine/src/main/kotlin/com/charlesbarton/bananachess/engine/`, and must never import `android.*` or `androidx.*`. `:app` is the Compose app, package `com.charlesbarton.bananachess`, sources under `Android/app/src/main/kotlin/com/charlesbarton/bananachess/`, in feature-first folders (`art/`, `home/`, `match/`, `rules/`, `link/`, `settings/`).
+- Environment: run `source Android/scripts/env.sh` before any Gradle command. It exports `JAVA_HOME` and `ANDROID_HOME`. Run Gradle from `Android/` with `./gradlew`.
+- Conventions: immutable `data class` values and `sealed interface` hierarchies (the Swift code relies on value semantics; never share a mutable list between states); ViewModels own all observable state and expose it as `StateFlow`; constructor injection with a default production instance; no DI container; no repository wrappers; an interface only when a test needs a fake; dispatchers are injected and named in code, never implied; no `!!` on production paths; comments only where the reason is not obvious; one error type per layer with user-readable messages.
+- Dependencies: every library is already declared in `Android/gradle/libs.versions.toml` by S01. Do not add one. If the slice cannot be done without a new dependency, stop and report it.
+- Do not edit `plans/`, `App/`, `Web/` or `Engine/` unless this slice's Scope says so.
+- User-facing copy is ported verbatim from the iOS source unless this slice says otherwise.
+
+## Scope
+- `BoardView(state, onSquareTap, modifier)` and the pieces listed above.
+- Semantics: one node per square with role button, tag and description; pieces, seams, markers and the flash are excluded from the accessibility tree.
+- Robolectric Compose tests: 36 square nodes exist; tapping calls back with engine coordinates, also when rotated; a selected fruit's destination square description contains "legal move"; a blender home says "blender home"; on a Sides board a fruit at (3,0) shows (3,5) as a legal move and on Walls it does not; a purchasable spawn says "buy it back".
+
+## Out of Scope
+- Scoreboards, controls and dialogs (S17).
+- Bursts and splatter (S18).
+
+## Acceptance Criteria
+- [ ] The board renders the standard opening under Robolectric with all 36 squares reachable by tag.
+- [ ] Square tags use engine coordinates in both orientations.
+- [ ] Tests added; build, lint and existing tests green.
+
+## Verification
+```bash
+source Android/scripts/env.sh
+cd Android && ./gradlew :app:testDebugUnitTest :app:lintDebug ktlintCheck :app:assembleDebug
+```
+
+## Estimate Rationale
+3: custom drawing plus the accessibility structure that the smoke tests depend on.
+
+## Actuals
+- **Actual points:** 3. The estimate was 3.
+- **What took longer / shorter than expected:** Rotation was shorter: the board maps display cells to engine positions instead of turning anything, so pieces and text are upright for free. Keeping every label out of the accessibility tree took longer; the flash and marker text are painted with a text measurer.
+- **Surprises / unknowns that surfaced:**
+  - Wrap seams are drawn above the squares so they are visible. By a reading of `BoardView.swift` they sit under 36 opaque squares on iOS and may be hidden there (not confirmed on a device).
+  - With the exact iOS offsets, a long flash label on the right-hand columns runs off the board's right edge. Clamping is added to S17.
+  - Reduced motion has no separate code path: with the animator scale at 0, Compose finishes the spring and fades at once.
+  - Restart and undo slide pieces back to their squares, a side effect of keying pieces by id.
+  - The board draws its border 6 dp outside its bounds; the host must leave room and must not clip it.
+- **Review fixes applied:** One marker per spawn when two destroyed blenders offer the same square; the board is pinned to left-to-right layout; tests run at a realistic screen size.
