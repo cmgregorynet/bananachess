@@ -43,21 +43,24 @@ The code review ran at `high` effort over `main...plan/android-rewrite`: 206 fil
 
 ### Major — fix before merge
 
-1. **Opening a "Send the final position" link seats the receiver as the sender.** (`Android/app/src/main/kotlin/com/charlesbarton/bananachess/link/LinkPlay.kt:51`)
+**Charles's call (2026-11-24):** fix 1 and 2 before merge; they were fixed in S28. Items 3 and 4 and the minor findings are follow-ups after merge.
+
+
+1. ✅ **Fixed in S28.** **Opening a "Send the final position" link seats the receiver as the sender.** (`Android/app/src/main/kotlin/com/charlesbarton/bananachess/link/LinkPlay.kt:51`)
    - **Cause:** `open` seats the local player as `payload.state.activePlayer`, but a finished match never hands the turn over.
    - **What the player sees:** their opponent labelled "You", the board turned to the wrong side, and the result told from the wrong side. They are also offered "Send the final position" back.
    - **Fix:** for a finished match, seat the player as `lastMove.playedBy.opponent`, falling back to the saved match's seat.
-2. **Tapping the same link again is refused with "That link is older than the match on this phone."** (`LinkPlay.kt:137`)
+2. ✅ **Fixed in S28.** **Tapping the same link again is refused with "That link is older than the match on this phone."** (`LinkPlay.kt:137`)
    - **Cause:** `holdsAtLeast` uses `>=`, so a link at the same move counts as stale. The spec copied iOS here, but the message is false, and `start()` already handles an equal saved match by opening it.
    - **Fix:** refuse only when the saved match is strictly further on; an equal link opens the saved match.
-3. **The CPU can promote a move on a bound rather than a real score.** (`Engine/Sources/BananaChessEngine/CPU/CPUPlayer.swift:266`, ported to `Android/engine/.../cpu/CpuPlayer.kt:126` and `:148`)
+3. **Follow-up.** **The CPU can promote a move on a bound rather than a real score.** (`Engine/Sources/BananaChessEngine/CPU/CPUPlayer.swift:266`, ported to `Android/engine/.../cpu/CpuPlayer.kt:126` and `:148`)
    - **Cause:** root moves are now ordered by the previous depth's scores. `preferringTempo` assumes that any higher-ranked contender was searched first with an exact value. A delivery searched after the best move can fail low and get only an upper bound within `tempoMargin`, and it is then promoted.
    - **Effect:** on Medium it can play a delivery whose fruit then gets blended.
    - **Scope:** this bug came in with `layering-pass`'s Brutal commit, so the Swift engine, which is the spec, has to be fixed first and the fix ported. CPU-driven golden samples may need regenerating.
 
 ### Major (iOS, pre-existing on `layering-pass`; not Android code)
 
-4. **iOS can lose a move if the app is killed in the background.** (`App/BananaChess/Match/MatchViewModel.swift:190`)
+4. **Follow-up.** **iOS can lose a move if the app is killed in the background.** (`App/BananaChess/Match/MatchViewModel.swift:190`)
    - **Cause:** `sceneDidResignActive` cancels the timeline, and `persist()` only runs from `finishTimeline()`. A move made just before leaving the app, or a CPU reply that lands while it's in the background, is not saved before iOS kills the suspended app.
    - **Fix:** Android already avoids this: it persists as soon as the authoritative state changes, in `perform()`. iOS needs the same.
 
@@ -86,8 +89,8 @@ The code review ran at `high` effort over `main...plan/android-rewrite`: 206 fil
 
 | | Points |
 |---|---|
-| Estimated | 67 |
-| Actual | 75 (+12%) |
+| Estimated | 68 (67 plus S28) |
+| Actual | 76 (+12%) |
 
 | Slice | Est → Actual | | Slice | Est → Actual |
 |---|---|---|---|---|
@@ -104,7 +107,7 @@ The code review ran at `high` effort over `main...plan/android-rewrite`: 206 fil
 | S11 design system | 3 → 3 | | S25 CPU-dependent tests | 1 → 1 |
 | S12 pieces | 3 → 3 | | S26 container | 2 → **3** |
 | S13 home | 3 → 3 | | S27 overlay/stability | 2 → **3** |
-| S14 rules screen | 2 → 2 | | | |
+| S14 rules screen | 2 → 2 | | S28 link fixes | 1 → 1 |
 
 **Where the estimates drifted:**
 - **The engine port was accurate or came in under.** The conformance fixture made a hand port mechanical.
