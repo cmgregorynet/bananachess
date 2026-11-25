@@ -3,8 +3,11 @@ package com.charlesbarton.bananachess.link
 import androidx.lifecycle.SavedStateHandle
 import com.charlesbarton.bananachess.MatchOpening
 import com.charlesbarton.bananachess.engine.model.BoardSetup
+import com.charlesbarton.bananachess.engine.model.GameStatus
+import com.charlesbarton.bananachess.engine.model.Outcome
 import com.charlesbarton.bananachess.engine.model.PlayerId
 import com.charlesbarton.bananachess.engine.model.RuleSet
+import com.charlesbarton.bananachess.engine.online.LastMove
 import com.charlesbarton.bananachess.engine.online.MatchLink
 import com.charlesbarton.bananachess.engine.online.MatchPayload
 import com.charlesbarton.bananachess.engine.rules.RulesEngine
@@ -200,7 +203,7 @@ class LinkOpeningTest {
     // region The match already on this phone
 
     @Test
-    fun `a link no further on than the match on this phone is refused, and a newer one accepted`() =
+    fun `an older link is refused, the same link opens the match again, and a newer one is accepted`() =
         runTest {
             val snapshots = linkMatchSaved(moveNumber = 2)
 
@@ -212,12 +215,44 @@ class LinkOpeningTest {
                     ?.message,
             )
 
+            // Tapping the opponent's message again to carry on is not a stale link.
             val same = opened(home(snapshots), MatchLink.url(payload(moveNumber = 2)))
-            assertEquals(LinkError.Stale, same.state.value.linkError)
+            assertNull(same.state.value.linkError)
+            val again = assertIs<MatchSource.ByLink>(same.state.value.linkToOpen)
+            assertEquals(2, checkNotNull(LinkPlay.start(again, snapshots.snapshot)).state.history.size)
 
             val newer = opened(home(snapshots), MatchLink.url(payload(moveNumber = 3)))
             assertNull(newer.state.value.linkError)
             assertIs<MatchSource.ByLink>(newer.state.value.linkToOpen)
+        }
+
+    @Test
+    fun `the final position opens seated as the side that received it`() =
+        runTest {
+            val playing = payload(moveNumber = 3)
+            val sender = playing.state.activePlayer
+            // A finished match never hands the turn over, so the sender is still the active player.
+            val finished = playing.state.updated(status = GameStatus.Ended(Outcome.Win(sender)))
+            val action = RulesEngine.legalActions(playing.state).first()
+
+            val withLastMove =
+                opened(
+                    home(),
+                    MatchLink.url(
+                        playing.copy(
+                            state = finished,
+                            lastMove = LastMove(action, playedBy = sender, events = emptyList()),
+                        ),
+                    ),
+                )
+            assertEquals(sender.opponent, assertIs<MatchSource.ByLink>(withLastMove.state.value.linkToOpen).localPlayer)
+
+            // iOS sends no last move.
+            val withoutLastMove = opened(home(), MatchLink.url(playing.copy(state = finished)))
+            assertEquals(
+                sender.opponent,
+                assertIs<MatchSource.ByLink>(withoutLastMove.state.value.linkToOpen).localPlayer,
+            )
         }
 
     @Test
