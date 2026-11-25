@@ -38,8 +38,12 @@ object LinkPlay {
     /**
      * The match a link someone sent should open, seated as whoever the match is waiting on.
      *
-     * @param saved the match this phone keeps, if any. A link to that same match is accepted
-     *   only when it is further on; one for a different match replaces it.
+     * A finished match never hands the turn over, so its active player is whoever played the
+     * last move: the phone opening it is the other side.
+     *
+     * @param saved the match this phone keeps, if any. A link to that same match is refused only
+     *   when it is behind; the same link opened again opens the saved match. Unlike iOS, which
+     *   refuses an equal link too and calls it older, which it is not.
      * @throws LinkError
      */
     fun open(
@@ -47,8 +51,15 @@ object LinkPlay {
         saved: MatchSnapshot?,
     ): MatchSource.ByLink {
         val payload = read(link)
-        if (saved != null && saved.holdsAtLeast(payload)) throw LinkError.Stale
-        return MatchSource.ByLink(link.trim(), localPlayer = payload.state.activePlayer)
+        if (saved != null && saved.isFurtherOnThan(payload)) throw LinkError.Stale
+        val state = payload.state
+        val seat =
+            if (state.status.isOver) {
+                payload.lastMove?.playedBy?.opponent ?: state.activePlayer.opponent
+            } else {
+                state.activePlayer
+            }
+        return MatchSource.ByLink(link.trim(), localPlayer = seat)
     }
 
     /**
@@ -135,4 +146,7 @@ object LinkPlay {
 
     private fun MatchSnapshot.holdsAtLeast(payload: MatchPayload): Boolean =
         isLinkMatch(payload.matchId) && state.history.size >= payload.moveNumber
+
+    private fun MatchSnapshot.isFurtherOnThan(payload: MatchPayload): Boolean =
+        isLinkMatch(payload.matchId) && state.history.size > payload.moveNumber
 }
